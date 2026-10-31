@@ -192,6 +192,16 @@
   .pair .card { flex:1; min-width:0; margin-bottom:0; padding:14px 12px; }
   .pair .total { font-size:clamp(18px, 6vw, 26px); white-space:nowrap; }
   .pair .label { font-size:12px; }
+  #bankCard, #cashCard { cursor:pointer; }
+  .bline { display:flex; justify-content:space-between; gap:6px; font-size:12px; color:var(--sub); margin-top:3px; }
+  .bline.strong { color:var(--text); font-weight:600; font-size:13px; border-top:1px solid var(--line); padding-top:4px; margin-top:5px; }
+  .bline.neg span:last-child { color:#ff3b30; }
+  .bstart { font-size:11px !important; margin-top:6px; }
+  .src.transfer { background:rgba(175,82,222,.16); color:#9a45c9; }
+  .item.transfer { border-left-color:#af52de; }
+  .item.transfer .amt { color:var(--sub); }
+  @media (prefers-color-scheme: dark) { .src.transfer { color:#d08bf5; } }
+  .bank-empty { color:var(--accent); font-size:14px; margin-top:8px; line-height:1.5; }
   .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
   .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
   .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
@@ -220,8 +230,12 @@
   </div>
   </div>
 
-  <!-- 今月の収支 → 入金：出金 → 支出 -->
+  <!-- 今月の収支 → 口座：現金 → 入金：出金 → 支出 -->
   <div class="card" id="balanceCard" style="display:none"></div>
+  <div class="pair">
+    <div class="card" id="bankCard" style="display:none"></div>
+    <div class="card" id="cashCard" style="display:none"></div>
+  </div>
   <div class="pair">
     <div class="card" id="incomeCard" style="display:none"></div>
     <div class="card" id="outflow" style="display:none"></div>
@@ -256,9 +270,10 @@
       <div class="seg" id="kindSeg">
         <button data-k="expense" onclick="setKind('expense')">支出</button>
         <button data-k="income" onclick="setKind('income')">入金</button>
+        <button data-k="transfer" onclick="setKind('transfer')">振替</button>
       </div>
       <label class="label">日付</label><input type="date" id="fDate">
-      <label class="label" id="fStoreLabel">店名</label><input type="text" id="fStore">
+      <div id="storeBox"><label class="label" id="fStoreLabel">店名</label><input type="text" id="fStore"></div>
       <label class="label">金額</label><input type="text" inputmode="numeric" class="money" id="fAmount" autocomplete="off">
     </div>
     <div id="editFields">
@@ -272,10 +287,10 @@
         <label class="label">金額</label><input type="text" inputmode="numeric" class="money" id="fEditAmount" autocomplete="off">
       </div>
     </div>
-    <label class="label">カテゴリ</label><select id="fCat"></select>
+    <label class="label" id="fCatLabel">カテゴリ</label><select id="fCat"></select>
     <div id="methodBox"><label class="label">支払方法</label><select id="fMethod"></select></div>
     <label class="label">メモ</label><input type="text" id="fMemo">
-    <label class="chk"><input type="checkbox" id="fExcl"><span id="fExclLabel">支出として集計しない</span></label>
+    <label class="chk" id="exclBox"><input type="checkbox" id="fExcl"><span id="fExclLabel">支出として集計しない</span></label>
     <div id="splitBtns">
       <button class="linkbtn" onclick="openSplit()">✂ 分割する</button>
       <button class="linkbtn" id="btnUnsplit" onclick="unsplit()">分割を元に戻す</button>
@@ -284,6 +299,18 @@
       <button class="danger" id="btnDel" onclick="del()">削除</button>
       <button class="secondary" onclick="dlg.close()">閉じる</button>
       <button class="primary" onclick="save()">保存</button>
+    </div>
+  </dialog>
+
+  <dialog id="bkDlg">
+    <div id="bkTitle" tabindex="-1" autofocus style="font-weight:600;font-size:17px;margin-bottom:4px;outline:none"></div>
+    <div class="hint" id="bkInfo"></div>
+    <label class="label">残高</label><input type="text" inputmode="numeric" class="money" id="bkAmount" autocomplete="off" placeholder="例：350,000">
+    <div class="hint">次の月からは、この残高と入金・出金から自動で繰り越します。通帳やアプリの残高とずれてきたら、その月の開始残高を入力し直してください。</div>
+    <div class="row">
+      <button class="secondary" id="bkReset" onclick="resetBank()">入力を取り消す</button>
+      <button class="secondary" onclick="bkDlg.close()">閉じる</button>
+      <button class="primary" onclick="saveBank()">保存</button>
     </div>
   </dialog>
 
@@ -818,7 +845,7 @@
   }
 
   function render() {
-    const exp = data.items.filter(i => i.kind !== 'income');   // 支出
+    const exp = data.items.filter(i => i.kind === 'expense');  // 支出（振替は含めない）
     const inc = data.items.filter(i => i.kind === 'income');   // 入金
     const pend = exp.filter(i => i.pending);
     const counted = exp.filter(i => !i.excluded && !i.pending);
@@ -874,14 +901,14 @@
     const base = baseItems();
     if (filterCat && !base.some(i => i.category === filterCat)) filterCat = '';
     const view = visibleItems();
-    const present = [...new Set(base.map(i => i.category))]
+    const present = [...new Set(base.filter(i => i.kind !== 'transfer').map(i => i.category))]
       .sort((a, b) => (a === UNCAT ? -1 : b === UNCAT ? 1 : data.categories.indexOf(a) - data.categories.indexOf(b)));
     const chip = (c, label, n) => `<button class="chip${c === filterCat ? ' on' : ''}${c === UNCAT ? ' uncat' : ''}" onclick="setFilter(${JSON.stringify(c).replace(/"/g, '&quot;')})">${label}<span class="n">${n}</span></button>`;
     const chips = base.length
       ? '<div class="chips">' + chip('', 'すべて', base.length)
         + present.map(c => chip(c, (c === UNCAT ? '⚠ ' : '') + esc(c), base.filter(i => i.category === c).length)).join('') + '</div>'
       : '';
-    const fexp = view.filter(x => x.i.kind !== 'income' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
+    const fexp = view.filter(x => x.i.kind === 'expense' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
     const finc = view.filter(x => x.i.kind === 'income' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
     const fsumTxt = (fexp || !finc ? yen(fexp) : '') + (finc ? `${fexp ? '・' : ''}<span class="dinc">入金 +${yen(finc)}</span>` : '');
     const finfo = filterCat ? `<div class="finfo">「${esc(filterCat)}」の合計 <b>${fsumTxt}</b>（${view.length}件）<button onclick="setFilter('')">解除</button></div>` : '';
@@ -890,15 +917,15 @@
     const finfo2 = searching && !filterCat
       ? `<div class="finfo">${allMode() ? '全期間で' : ''}「${esc(searchQ())}」を含む明細 <b>${fsumTxt}</b>（${view.length}件）${searchBusy ? '・検索中…' : ''}</div>` : '';
     document.getElementById('list').innerHTML = (base.length || searching)
-      ? '<div class="listtop"><div class="legend">' + mailLegend() + '<span class="src fixed">固定費</span><span class="src manual">手入力</span><span class="src income">入金</span><span class="src pend">確定前</span></div>'
+      ? '<div class="listtop"><div class="legend">' + mailLegend() + '<span class="src fixed">固定費</span><span class="src manual">手入力</span><span class="src income">入金</span><span class="src transfer">振替</span><span class="src pend">確定前</span></div>'
         + (selMode ? '' : '<button onclick="startSelect()">☑ カテゴリ一括変更</button>') + '</div>'
         + chips + finfo + finfo2
         + view.map(({ i, k }, n) => dayHead(i, n, view) + `
-        <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}" onclick="tapItem(${k})">
+        <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}${i.kind === 'transfer' ? ' transfer' : ''}" onclick="tapItem(${k})">
           ${selMode ? (i.pending ? '<span class="ck" style="visibility:hidden"></span>' : `<span class="ck${selected.has(i.row) ? ' on' : ''}">✓</span>`) : ''}
           <div><div class="store">${esc(i.store || '(店名なし)')}</div>${i.rawStore && i.rawStore !== i.store ? `<div class="orig">${esc(i.rawStore)}</div>` : ''}
-          <div class="meta"><span class="src ${i.kind === 'income' ? 'income' : i.source}">${i.kind === 'income' ? '入金' : srcLabel(i)}</span>${i.pending ? (i.overdue ? '<span class="src pend overdue">未着</span>' : '<span class="src pend">確定前</span>') : ''}${i.split ? '<span class="src split">分割</span>' : ''}${i.excluded ? '<span class="src excl">集計外</span>' : ''}${i.category === UNCAT ? '<span class="cat-uncat">⚠ 未分類</span>' : esc(i.category)}${i.source === 'mail' || i.kind === 'income' ? '' : methodTypeOf(i.method) === 'card' ? '・💳' + esc(methodName(i.method)) : ['cash', 'prepaid'].includes(methodTypeOf(i.method)) ? '・💴' + esc(methodName(i.method)) : ''}${i.memo && i.memo !== '固定費' ? '・' + esc(i.memo) : ''}</div></div>
-          <div class="amt">${i.kind === 'income' ? '+' : ''}${yen(i.amount)}</div>
+          <div class="meta"><span class="src ${i.kind === 'income' ? 'income' : i.kind === 'transfer' ? 'transfer' : i.source}">${i.kind === 'income' ? '入金' : i.kind === 'transfer' ? '振替' : srcLabel(i)}</span>${i.pending ? (i.overdue ? '<span class="src pend overdue">未着</span>' : '<span class="src pend">確定前</span>') : ''}${i.split ? '<span class="src split">分割</span>' : ''}${i.excluded && i.kind !== 'transfer' ? '<span class="src excl">集計外</span>' : ''}${i.kind === 'transfer' ? esc(methodName(i.method)) + ' → ' + esc(methodName(i.category)) : i.category === UNCAT ? '<span class="cat-uncat">⚠ 未分類</span>' : esc(i.category)}${i.source === 'mail' || i.kind !== 'expense' ? '' : methodTypeOf(i.method) === 'card' ? '・💳' + esc(methodName(i.method)) : ['cash', 'prepaid'].includes(methodTypeOf(i.method)) ? '・💴' + esc(methodName(i.method)) : ''}${i.memo && i.memo !== '固定費' ? '・' + esc(i.memo) : ''}</div></div>
+          <div class="amt">${i.kind === 'income' ? '+' : i.kind === 'transfer' ? '⇄ ' : ''}${yen(i.amount)}</div>
         </div>`).join('')
         + (view.length ? '' : `<div class="empty">${searchBusy ? '検索中…' : '該当する明細はありません'}</div>`)
       : '<div class="empty">この月の明細はありません</div>';
@@ -910,8 +937,8 @@
   function dayHead(i, n, view) {
     if (n > 0 && view[n - 1].i.date === i.date) return '';
     const same = view.map(x => x.i).filter(x => x.date === i.date);
-    const total = same.filter(x => x.kind !== 'income' && !x.excluded && !x.pending).reduce((a, x) => a + x.amount, 0);
-    const pend = same.filter(x => x.kind !== 'income' && x.pending).reduce((a, x) => a + x.amount, 0);
+    const total = same.filter(x => x.kind === 'expense' && !x.excluded && !x.pending).reduce((a, x) => a + x.amount, 0);
+    const pend = same.filter(x => x.kind === 'expense' && x.pending).reduce((a, x) => a + x.amount, 0);
     const inc = same.filter(x => x.kind === 'income' && !x.excluded).reduce((a, x) => a + x.amount, 0);
     const [y, m, d] = i.date.split('-').map(Number);
     const wd = new Date(y, m - 1, d).getDay();
@@ -987,6 +1014,69 @@
     bc.innerHTML = `<div class="label">今月の収支（入金 − 出金）</div>`
       + `<div class="total ${bal >= 0 ? 'pos' : 'neg'}">${signed(bal)}</div>`
       + `<div class="label" style="margin-top:4px">確定済のみ：${signed(balConf)}</div>`;
+    renderBank();
+  }
+
+  // ===== ゆうちょ残高 =====
+  const yenS = v => (v < 0 ? '−' : '') + yen(Math.abs(v));
+  const mdw = t => { const [y, m, d] = t.split('-').map(Number); return `${m}/${d}（${WD[new Date(y, m - 1, d).getDay()]}）`; };
+  function renderBank() {
+    const el = document.getElementById('bankCard'), b = data.bank;
+    if (!data.period) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.onclick = () => openBank('bank');
+    if (!b) {
+      el.innerHTML = `<div class="label">ゆうちょ残高</div><div class="bank-empty">${mdw(data.period.start)}時点の<br>残高を入力 ›</div>`;
+    } else if (b.state === 'now') {
+      el.innerHTML = `<div class="label">ゆうちょ残高（今日）</div><div class="total${b.current < 0 ? ' neg' : ''}">${yenS(b.current)}</div>`
+        + `<div class="bline"><span>引落予定</span><span>−${yen(b.planned)}</span></div>`
+        + (b.plannedIncome ? `<div class="bline"><span>入金予定</span><span>+${yen(b.plannedIncome)}</span></div>` : '')
+        + `<div class="bline strong${b.end < 0 ? ' neg' : ''}"><span>月末予定</span><span>${yenS(b.end)}</span></div>`
+        + `<div class="label bstart">開始：${yenS(b.start)}${b.source === 'carry' ? '（繰越）' : ''}</div>`;
+    } else {
+      el.innerHTML = `<div class="label">ゆうちょ残高（${b.state === 'past' ? '期末' : '見込み'}）</div><div class="total${b.end < 0 ? ' neg' : ''}">${yenS(b.end)}</div>`
+        + `<div class="label bstart">開始：${yenS(b.start)}${b.source === 'carry' ? '（繰越）' : ''}</div>`;
+    }
+    renderCash();
+  }
+  function renderCash() {
+    const el = document.getElementById('cashCard'), c = data.cash;
+    el.style.display = '';
+    el.onclick = () => openBank('cash');
+    if (!c) {
+      el.innerHTML = `<div class="label">現金（手元）</div><div class="bank-empty">${mdw(data.period.start)}時点の<br>現金を入力 ›</div>`;
+      return;
+    }
+    const main = c.state === 'now' ? c.current : c.end;
+    el.innerHTML = `<div class="label">現金（手元${c.state === 'now' ? '・今日' : c.state === 'past' ? '・期末' : '・見込み'}）</div>`
+      + `<div class="total${main < 0 ? ' neg' : ''}">${yenS(main)}</div>`
+      + `<div class="label bstart">開始：${yenS(c.start)}${c.source === 'carry' ? '（繰越）' : ''}</div>`
+      + (main < 0 ? '<div class="hint" style="margin:4px 0 0;color:#ff3b30">ATMで下ろした分を「振替」で記録してください</div>' : '');
+  }
+  const bkDlg = document.getElementById('bkDlg');
+  let bkWhich = 'bank';
+  function openBank(which) {
+    if (stale) return;
+    bkWhich = which;
+    const b = which === 'cash' ? data.cash : data.bank;
+    const what = which === 'cash' ? '手元の現金' : 'ゆうちょ銀行の残高';
+    document.getElementById('bkTitle').textContent = `${cur.getFullYear()}年${cur.getMonth() + 1}月${data.custom ? '度' : ''}の開始${which === 'cash' ? '時の現金' : '残高'}`;
+    document.getElementById('bkInfo').textContent = `${mdw(data.period.start)}時点の${what}を入力してください。`
+      + (b && b.source === 'carry' ? `今は前の月からの繰り越しで ${yenS(b.start)} になっています。` : '');
+    document.getElementById('bkAmount').value = b && b.source === 'input' ? fmtNum(b.start) : '';
+    document.getElementById('bkReset').style.display = b && b.source === 'input' ? '' : 'none';
+    bkDlg.showModal(); noAutoFocus(bkDlg);
+  }
+  function saveBank() {
+    const v = document.getElementById('bkAmount').value;
+    if (!digitsOf(v)) { alert('金額を入力してください（0円なら 0）'); return; }
+    bkDlg.close();
+    act('setStartBalance', [data.ym, parseMoney(v), bkWhich]);
+  }
+  function resetBank() {
+    if (!confirm('この月の入力を取り消しますか？\n（前の月の入力があれば、そこからの繰り越しに戻ります）')) return;
+    bkDlg.close();
+    act('setStartBalance', [data.ym, null, bkWhich]);
   }
 
   // ===== 確定前の固定費・定期入金を確定 =====
@@ -1008,22 +1098,32 @@
 
   // ===== 支出／入金の切り替え（追加画面） =====
   let addKind = 'expense';
-  const catsFor = kind => kind === 'income' ? (data.incomeCategories || []) : data.categories;
+  // 振替先：現金・チャージ式の支払方法
+  const transferTargets = () => (data.payMethods || []).filter(m => m.type === 'cash' || m.type === 'prepaid');
+  const catsFor = kind => kind === 'income' ? (data.incomeCategories || []) : kind === 'transfer' ? transferTargets().map(m => m.id) : data.categories;
   function fillCats(kind, sel) {
+    if (kind === 'transfer') {
+      document.getElementById('fCat').innerHTML = transferTargets().map(m =>
+        `<option value="${esc(m.id)}"${m.id === sel ? ' selected' : ''}>${esc(m.name)}${m.type === 'cash' ? '（ATMで引き出し）' : '（チャージ）'}</option>`).join('');
+      return;
+    }
     const list = catsFor(kind).slice();
     if (sel && !list.includes(sel)) list.push(sel);
     document.getElementById('fCat').innerHTML = list.map(c => `<option${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
   }
   function kindUi(kind) {
-    const inc = kind === 'income';
-    document.getElementById('methodBox').style.display = inc ? 'none' : '';
+    const inc = kind === 'income', tr = kind === 'transfer';
+    document.getElementById('methodBox').style.display = inc || tr ? 'none' : '';
+    document.getElementById('exclBox').style.display = tr ? 'none' : '';
+    document.getElementById('storeBox').style.display = tr ? 'none' : '';
     document.getElementById('fExclLabel').textContent = inc ? '入金として集計しない' : '支出として集計しない';
     document.getElementById('fStoreLabel').textContent = inc ? '入金元（会社名など）' : '店名';
+    document.getElementById('fCatLabel').textContent = tr ? '振替先（ゆうちょ → ）' : 'カテゴリ';
   }
   function setKind(kind) {
     addKind = kind;
     document.querySelectorAll('#kindSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === kind));
-    document.getElementById('dlgTitle').textContent = kind === 'income' ? '入金を追加' : '支出を追加';
+    document.getElementById('dlgTitle').textContent = kind === 'income' ? '入金を追加' : kind === 'transfer' ? '振替を追加' : '支出を追加';
     fillCats(kind, catsFor(kind).includes(filterCat) ? filterCat : catsFor(kind)[0]);
     kindUi(kind);
   }
@@ -1071,7 +1171,7 @@
     if (stale) return; // 更新中は古い内容を編集しないようにする
     const i = baseItems()[k];
     if (!selMode) return openEdit(k);
-    if (i.pending) return;
+    if (i.pending || i.kind === 'transfer') return;
     selected.has(i.row) ? selected.delete(i.row) : selected.add(i.row);
     render(); updateSelBar();
   }
@@ -1089,7 +1189,7 @@
     render();
   }
   function selectAll() {
-    const rows = visibleItems().map(x => x.i).filter(i => !i.pending).map(i => i.row);
+    const rows = visibleItems().map(x => x.i).filter(i => !i.pending && i.kind !== 'transfer').map(i => i.row);
     const all = rows.every(r => selected.has(r));
     rows.forEach(r => all ? selected.delete(r) : selected.add(r));
     render(); updateSelBar();
@@ -1148,8 +1248,8 @@
     document.getElementById('dlgTitle').textContent = (editing.store || '支出') + '　' + yen(editing.amount);
     document.getElementById('addFields').style.display = 'none';
     document.getElementById('editFields').style.display = '';
-    const isInc = editing.kind === 'income';
-    document.getElementById('splitBtns').style.display = isInc ? 'none' : '';
+    const isInc = editing.kind === 'income', isTr = editing.kind === 'transfer';
+    document.getElementById('splitBtns').style.display = isInc || isTr ? 'none' : '';
     document.getElementById('btnUnsplit').style.display = editing.split ? '' : 'none';
     fillCats(editing.kind, editing.category);
     kindUi(editing.kind);
@@ -1161,7 +1261,7 @@
     document.getElementById('fOrig').textContent = '元の店名：' + (editing.rawStore || '(なし)')
       + (editing.aliasStore !== editing.rawStore ? '　／　置き換え後：' + editing.aliasStore : '');
     document.getElementById('btnDel').style.display = '';
-    document.getElementById('fCat').value = editing.category;
+    if (!isTr) document.getElementById('fCat').value = editing.category;
     document.getElementById('fMemo').value = editing.memo;
     document.getElementById('fExcl').checked = editing.excluded;
     fillMethods('fMethod', editing.method);
@@ -1180,17 +1280,19 @@
       const args = [editing.row, cat, memo, excluded, customName(),
         editing.source === 'manual' ? document.getElementById('fEditDate').value : '',
         amtEditable ? parseMoney(document.getElementById('fEditAmount').value) : 0,
-        document.getElementById('fMethod').value];
+        editing.kind === 'transfer' ? editing.method : document.getElementById('fMethod').value];
       dlg.close();
       act('updateEntry', args);
     } else {
       const amount = parseMoney(document.getElementById('fAmount').value);
       if (!amount) return;
-      const entry = {
-        date: document.getElementById('fDate').value, amount,
-        store: document.getElementById('fStore').value, category: cat, memo, excluded,
-        method: document.getElementById('fMethod').value, kind: addKind
-      };
+      const toM = (data.payMethods || []).find(m => m.id === cat) || {};
+      const entry = addKind === 'transfer'
+        ? { kind: 'transfer', date: document.getElementById('fDate').value, amount, to: cat, memo,
+            store: toM.type === 'cash' ? 'ATMで引き出し' : (toM.name || '') + 'へチャージ' }
+        : { date: document.getElementById('fDate').value, amount,
+            store: document.getElementById('fStore').value, category: cat, memo, excluded,
+            method: document.getElementById('fMethod').value, kind: addKind };
       dlg.close();
       act('addEntry', [entry]);
     }
