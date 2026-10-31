@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家計簿</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="家計簿">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root { --bg:#f5f5f7; --card:#fff; --text:#1c1c1e; --sub:#8e8e93; --accent:#0a84ff; --line:#e5e5ea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#000; --card:#1c1c1e; --text:#f2f2f7; --sub:#8e8e93; --line:#2c2c2e; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Hiragino Sans",sans-serif; background:var(--bg); color:var(--text); padding:16px 16px 120px; }
+  .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .head button { background:none; border:none; color:var(--accent); font-size:22px; padding:8px; }
+  .month { font-size:18px; font-weight:600; text-align:center; }
+  .month .prange { font-size:12px; font-weight:400; color:var(--sub); margin-top:1px; }
+  .card { background:var(--card); border-radius:14px; padding:16px; margin-bottom:12px; }
+  .total { font-size:32px; font-weight:700; }
+  .label { color:var(--sub); font-size:13px; }
+  .bar { display:flex; justify-content:space-between; font-size:14px; padding:6px 0; border-bottom:1px solid var(--line); }
+  .bar:last-child { border:none; }
+  .item { display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
+  .item:last-child { border-bottom:none; }
+  .item .store { font-size:15px; }
+  .item .meta { font-size:12px; color:var(--sub); margin-top:2px; }
+  .item .amt { font-weight:600; font-size:16px; white-space:nowrap; }
+  .fab { position:fixed; right:20px; bottom:calc(30px + env(safe-area-inset-bottom)); width:60px; height:60px; border-radius:30px; background:var(--accent); color:#fff; font-size:32px; border:none; box-shadow:0 4px 12px rgba(0,0,0,.25); }
+  .sync { position:fixed; left:20px; bottom:calc(30px + env(safe-area-inset-bottom)); height:44px; padding:0 16px; border-radius:22px; background:var(--card); color:var(--accent); border:1px solid var(--line); font-size:14px; }
+  dialog { border:none; border-radius:16px; background:var(--card); color:var(--text); width:min(92vw,400px); padding:20px; }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+  dialog input, dialog select { width:100%; font-size:17px; padding:10px; margin:6px 0 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .row { display:flex; gap:8px; }
+  .row button { flex:1; padding:12px; font-size:16px; border-radius:10px; border:none; }
+  .primary { background:var(--accent); color:#fff; }
+  .secondary { background:var(--line); color:var(--text); }
+  .danger { background:#ff3b30; color:#fff; }
+  .empty { color:var(--sub); text-align:center; padding:20px 0; }
+  dialog textarea { width:100%; font-size:15px; padding:10px; margin:6px 0 4px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-family:inherit; }
+  .hint { font-size:12px; color:var(--sub); margin-bottom:12px; }
+  #setDlg { max-height:90vh; overflow-y:auto; }
+  .nav { display:flex; align-items:center; margin-bottom:12px; min-height:32px; }
+  .nav button { background:none; border:none; color:var(--accent); font-size:16px; padding:4px 0; min-width:70px; }
+  .nav .ttl { flex:1; text-align:center; font-weight:600; font-size:17px; }
+  .group { background:var(--bg); border-radius:12px; overflow:hidden; margin-bottom:12px; }
+  .cell { display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--line); font-size:16px; }
+  .cell:last-child { border:none; }
+  .cell .txt { flex:1; word-break:break-all; }
+  .cell .cnt { color:var(--sub); font-size:14px; }
+  .cell .chev { color:var(--sub); font-size:18px; }
+  .cell.link { cursor:pointer; }
+  .cell.red { color:#ff3b30; justify-content:center; cursor:pointer; }
+  .del { background:#ff3b30; color:#fff; border:none; border-radius:50%; width:26px; height:26px; font-size:18px; line-height:26px; padding:0; flex:none; }
+  .addrow { display:flex; gap:8px; margin-bottom:8px; }
+  dialog .addrow input { flex:1; margin:0; }
+  .src { display:inline-block; font-size:11px; font-weight:600; padding:1px 7px; border-radius:8px; margin-right:6px; vertical-align:1px; }
+  .src.mail   { background:rgba(10,132,255,.15); color:#0a84ff; }
+  .src.fixed  { background:rgba(255,149,0,.18);  color:#c76a00; }
+  .src.manual { background:rgba(52,199,89,.18);  color:#248a3d; }
+  @media (prefers-color-scheme: dark) {
+    .src.fixed  { color:#ffb340; }
+    .src.manual { color:#4cd964; }
+  }
+  .item { border-left:4px solid transparent; padding-left:10px; margin-left:-14px; }
+  .item.mail   { border-left-color:#0a84ff; }
+  .item.fixed  { border-left-color:#ff9500; }
+  .item.manual { border-left-color:#34c759; }
+  .item.excl .store, .item.excl .amt { color:var(--sub); }
+  .item.excl .amt { text-decoration:line-through; }
+  .src.excl { background:var(--line); color:var(--sub); }
+  .chk { display:flex; align-items:center; gap:10px; font-size:16px; margin:2px 0 14px; }
+  .chk input { width:22px; height:22px; margin:0; }
+  .item .orig { font-size:11px; color:var(--sub); margin-top:1px; word-break:break-all; }
+  .sticky { position:sticky; top:0; z-index:10; background:var(--bg);
+    margin:-16px -16px 12px; padding:calc(16px + env(safe-area-inset-top)) 16px 4px;
+    box-shadow:0 6px 8px -6px rgba(0,0,0,.25); }
+  .sticky .card { margin-bottom:8px; }
+  .item.pending { border-left-style:dashed; opacity:.65; }
+  .src.pend.overdue { border-color:#ff3b30; color:#ff3b30; border-style:solid; }
+  .item.pending.overdue { opacity:1; }
+  .src.pend { background:transparent; color:var(--sub); border:1px dashed var(--sub); padding:0 6px; }
+  .grip { color:var(--sub); font-size:20px; padding:0 4px 0 0; margin:-8px 0; line-height:44px; touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; flex:none; }
+  .cell.dragging { background:var(--card); box-shadow:0 2px 12px rgba(0,0,0,.35); position:relative; z-index:2; }
+  .src.split { background:var(--line); color:var(--text); }
+  .sp-row { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+  dialog .sp-row input, dialog .sp-row select { margin:0; padding:8px; font-size:16px; }
+  .sp-row .amt-in { width:34%; flex:none; }
+  .sp-row select { flex:1; min-width:0; }
+  .sp-rest { width:34%; flex:none; font-size:16px; font-weight:600; padding:8px 4px; }
+  .linkbtn { width:100%; background:none; border:1px solid var(--line); color:var(--accent); border-radius:10px; padding:10px; font-size:15px; margin-bottom:10px; }
+  .day { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; font-weight:600; color:var(--sub);
+    padding:14px 0 6px; border-bottom:1px solid var(--line); }
+  .day { background:#f2f2f7; margin:0 -16px; padding:8px 16px; border-bottom:none; }
+  @media (prefers-color-scheme: dark) { .day { background:#2c2c2e; } }
+  .day .dt.sat { color:#0a84ff; }
+  .day .dt.sun { color:#ff3b30; }
+  .dayadd { background:none; border:1px solid var(--line); color:var(--accent); border-radius:50%; width:24px; height:24px;
+    font-size:15px; line-height:20px; padding:0; margin-left:8px; vertical-align:1px; }
+  .day .dsum { color:var(--text); font-size:14px; }
+  .day .dsub { font-weight:400; font-size:12px; color:var(--sub); margin-left:6px; }
+  .item { gap:10px; }
+  .item > div:not(.amt) { flex:1; min-width:0; }
+  .ck { flex:none; width:24px; height:24px; border-radius:50%; border:2px solid var(--sub); color:transparent;
+    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; }
+  .ck.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .listtop { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .listtop button { background:none; border:none; color:var(--accent); font-size:14px; padding:4px 0; }
+  .selbar { display:none; position:fixed; left:0; right:0; bottom:0; z-index:20; background:var(--card);
+    border-top:1px solid var(--line); padding:12px 16px calc(12px + env(safe-area-inset-bottom)); box-shadow:0 -4px 12px rgba(0,0,0,.2); }
+  .selbar .cnt { font-size:14px; color:var(--sub); margin-bottom:8px; display:flex; justify-content:space-between; }
+  .selbar .cnt button { background:none; border:none; color:var(--accent); font-size:14px; padding:0; }
+  .selbar .ctl { display:flex; gap:8px; }
+  .selbar select { flex:1; min-width:0; font-size:16px; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .selbar .ctl button { padding:0 14px; border:none; border-radius:10px; font-size:15px; }
+  body.selecting .selbar { display:block; }
+  body.selecting .fab, body.selecting .sync { display:none; }
+  .chips { display:flex; gap:6px; overflow-x:auto; padding:10px 0 4px; margin:0 -4px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip { flex:none; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:16px; padding:6px 12px; font-size:13px; }
+  .chip .n { color:var(--sub); margin-left:5px; font-size:12px; }
+  .chip.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .chip.on .n { color:rgba(255,255,255,.8); }
+  .chip.uncat:not(.on) { border-color:#ff9500; color:#c76a00; }
+  .finfo { font-size:13px; color:var(--sub); padding:6px 0 2px; }
+  .finfo b { color:var(--text); }
+  .finfo button { background:none; border:none; color:var(--accent); font-size:13px; margin-left:6px; padding:0; }
+  .bar.link { cursor:pointer; }
+  .bar { display:block; padding:8px 0; }
+  .bar .brow { display:flex; justify-content:space-between; gap:8px; }
+  .bar .bud { color:var(--sub); font-size:12px; }
+  .bar.on .bname { color:var(--accent); font-weight:600; }
+  .bar.uncat .bname { color:#c76a00; font-weight:600; }
+  .meter { position:relative; height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:5px; display:flex; }
+  .meter i { display:block; height:100%; background:#34c759; }
+  .meter i.warn { background:#ff9500; }
+  .meter i.over { background:#ff3b30; }
+  .meter i.pend { background:repeating-linear-gradient(45deg, var(--sub) 0 3px, transparent 3px 6px); opacity:.6; }
+  .brest { font-size:11px; color:var(--sub); margin-top:3px; text-align:right; }
+  .brest.over { color:#ff3b30; font-weight:600; }
+  .budline { font-size:13px; margin-top:4px; color:var(--sub); }
+  .budline b { color:var(--text); }
+  .budline.over b { color:#ff3b30; }
+  .budrow { display:flex; align-items:center; gap:8px; padding:6px 14px; border-bottom:1px solid var(--line); }
+  .budrow:last-child { border:none; }
+  .budrow .txt { flex:1; font-size:16px; }
+  dialog .budrow input { width:42%; margin:0; text-align:right; padding:8px; font-size:16px; }
+  .item.uncat { background:rgba(255,149,0,.08); }
+  .cat-uncat { color:#c76a00; font-weight:700; }
+  @media (prefers-color-scheme: dark) {
+    .chip.uncat:not(.on), .bar.uncat .bname, .cat-uncat { color:#ffb340; }
+    .item.uncat { background:rgba(255,149,0,.12); }
+  }
+  .search { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+  .search input[type=search] { flex:1; min-width:0; font-size:16px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--text); -webkit-appearance:none; }
+  .qall { display:flex; align-items:center; gap:5px; font-size:14px; color:var(--sub); white-space:nowrap; }
+  .qall input { width:18px; height:18px; margin:0; }
+  .tconf { font-size:14px; font-weight:500; color:var(--sub); margin-left:6px; }
+  .of-head { display:flex; justify-content:space-between; align-items:baseline; }
+  .of-head b { font-size:20px; }
+  .of-row { display:flex; justify-content:space-between; gap:8px; font-size:14px; padding:6px 0; border-top:1px solid var(--line); }
+  .of-row .sub { font-size:11px; color:var(--sub); }
+  .of-note { font-size:11px; color:var(--sub); margin-top:6px; }
+  .tag-open { font-size:10px; border:1px dashed var(--sub); color:var(--sub); border-radius:6px; padding:0 5px; margin-left:4px; }
+  .budhead { display:flex; align-items:baseline; gap:8px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+  .budhead b { font-size:20px; }
+  .budhead .bt { margin-left:auto; font-size:12px; color:var(--sub); }
+  .budhead.over b, .budhead.over .label { color:#ff3b30; }
+  body.stale #list, body.stale #byCat, body.stale #outflow { opacity:.6; transition:opacity .2s; }
+  #loadingTxt { color:var(--accent); }
+  .src.income { background:rgba(48,176,199,.18); color:#1a8aa0; }
+  .item.income { border-left-color:#30b0c7; }
+  .item.income .amt { color:#248a3d; }
+  .dinc { color:#248a3d !important; }
+  .pos { color:#248a3d; } .neg { color:#ff3b30; }
+  @media (prefers-color-scheme: dark) {
+    .src.income { color:#5ac8de; }
+    .item.income .amt, .dinc, .pos { color:#4cd964 !important; }
+  }
+  .seg { display:flex; background:var(--bg); border-radius:10px; padding:3px; margin-bottom:12px; }
+  .seg button { flex:1; border:none; background:none; color:var(--sub); font-size:15px; padding:8px; border-radius:8px; }
+  .seg button.on { background:var(--card); color:var(--text); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .pair { display:flex; gap:10px; margin-bottom:12px; }
+  .pair .card { flex:1; min-width:0; margin-bottom:0; padding:14px 12px; }
+  .pair .total { font-size:clamp(18px, 6vw, 26px); white-space:nowrap; }
+  .pair .label { font-size:12px; }
+  .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
+  .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
+  .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .legend { font-size:12px; color:var(--sub); margin-bottom:6px; }
+  .addrow button { padding:0 16px; border:none; border-radius:10px; background:var(--accent); color:#fff; font-size:16px; }
+</style>
+</head>
+<body>
+  <div id="setup" class="setup" style="display:none">
+    <div class="setup-box">
+      <div style="font-size:20px;font-weight:700;margin-bottom:8px">家計簿の接続設定</div>
+      <div class="hint" style="font-size:14px;color:var(--text)">いつも使っている家計簿のURL（末尾が <b>/exec?key=…</b> のもの）を貼り付けてください。</div>
+      <input id="setupUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec?key=…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="primary" style="width:100%;padding:12px;border:none;border-radius:10px;font-size:16px" onclick="saveSetup()">保存して始める</button>
+      <div class="hint" style="margin-top:12px">URLはこの端末の中だけに保存され、外には送られません。合言葉入りのURLは人に教えないでください。</div>
+    </div>
+  </div>
+  <div class="sticky">
+  <div class="head">
+    <button onclick="move(-1)">‹</button>
+    <div class="month" id="month"></div>
+    <button onclick="move(1)">›</button>
+  </div>
+  <div style="text-align:right;margin:-8px 0 4px">
+    <button onclick="openSettings()" style="background:none;border:none;color:var(--accent);font-size:15px">⚙ 設定</button>
+  </div>
+  </div>
+
+  <!-- 今月の収支 → 入金：出金 → 支出 -->
+  <div class="card" id="balanceCard" style="display:none"></div>
+  <div class="pair">
+    <div class="card" id="incomeCard" style="display:none"></div>
+    <div class="card" id="outflow" style="display:none"></div>
+  </div>
+  <div class="card">
+    <div class="label">今月の支出</div>
+    <div class="total" id="total">¥0</div>
+    <div class="label" id="exclTotal" style="margin-top:4px"></div>
+  </div>
+  <div class="card" id="byCat"></div>
+  <div class="search">
+    <input type="search" id="q" placeholder="🔍 店名で検索" oninput="onSearch()" autocomplete="off">
+    <label class="qall"><input type="checkbox" id="qAll" onchange="onSearch()">全期間</label>
+  </div>
+  <div class="card" id="list"><div class="empty">読み込み中…</div></div>
+
+  <div class="selbar">
+    <div class="cnt"><span id="selCount">0件選択中</span><button onclick="selectAll()">すべて選択</button></div>
+    <div class="ctl">
+      <select id="selCat"></select>
+      <button class="secondary" onclick="endSelect()">やめる</button>
+      <button class="primary" onclick="applyBulk()">変更</button>
+    </div>
+  </div>
+
+  <button class="sync" onclick="sync()">メールから更新</button>
+  <button class="fab" onclick="openAdd()">＋</button>
+
+  <dialog id="dlg">
+    <div id="dlgTitle" tabindex="-1" autofocus style="font-weight:600;font-size:17px;margin-bottom:8px;outline:none"></div>
+    <div id="addFields">
+      <div class="seg" id="kindSeg">
+        <button data-k="expense" onclick="setKind('expense')">支出</button>
+        <button data-k="income" onclick="setKind('income')">入金</button>
+      </div>
+      <label class="label">日付</label><input type="date" id="fDate">
+      <label class="label" id="fStoreLabel">店名</label><input type="text" id="fStore">
+      <label class="label">金額</label><input type="text" inputmode="numeric" class="money" id="fAmount" autocomplete="off">
+    </div>
+    <div id="editFields">
+      <div id="editDate">
+        <label class="label">日付</label><input type="date" id="fEditDate">
+      </div>
+      <label class="label">店名</label>
+      <div class="addrow" style="margin:6px 0 4px"><input type="text" id="fName"><button style="background:var(--line);color:var(--text)" onclick="resetName()">元に戻す</button></div>
+      <div class="hint" id="fOrig"></div>
+      <div id="editAmount">
+        <label class="label">金額</label><input type="text" inputmode="numeric" class="money" id="fEditAmount" autocomplete="off">
+      </div>
+    </div>
+    <label class="label">カテゴリ</label><select id="fCat"></select>
+    <div id="methodBox"><label class="label">支払方法</label><select id="fMethod"></select></div>
+    <label class="label">メモ</label><input type="text" id="fMemo">
+    <label class="chk"><input type="checkbox" id="fExcl"><span id="fExclLabel">支出として集計しない</span></label>
+    <div id="splitBtns">
+      <button class="linkbtn" onclick="openSplit()">✂ 分割する</button>
+      <button class="linkbtn" id="btnUnsplit" onclick="unsplit()">分割を元に戻す</button>
+    </div>
+    <div class="row">
+      <button class="danger" id="btnDel" onclick="del()">削除</button>
+      <button class="secondary" onclick="dlg.close()">閉じる</button>
+      <button class="primary" onclick="save()">保存</button>
+    </div>
+  </dialog>
+
+  <dialog id="cfDlg">
+    <div id="cfTitle" tabindex="-1" autofocus style="font-weight:600;font-size:17px;margin-bottom:4px;outline:none"></div>
+    <div class="hint" id="cfInfo"></div>
+    <label class="label">金額</label><input type="text" inputmode="numeric" class="money" id="cfAmount" autocomplete="off">
+    <div class="hint">金額を確認して「確定する」を押すと、明細として記録されます。押さなくても、日付が来ると登録した金額で自動で記録されます（あとから金額を直すこともできます）。</div>
+    <div class="row">
+      <button class="secondary" onclick="cfDlg.close()">閉じる</button>
+      <button class="primary" onclick="doConfirm()">確定する</button>
+    </div>
+  </dialog>
+
+  <dialog id="spDlg">
+    <div style="font-weight:600;font-size:17px;margin-bottom:4px">明細を分割</div>
+    <div class="hint" id="spInfo"></div>
+    <div id="spRows"></div>
+    <button class="linkbtn" onclick="addSplitRow()">＋ 行を追加</button>
+    <div class="hint">1行目の金額は、合計から他の行を引いた残りが自動で入ります。</div>
+    <div class="row">
+      <button class="secondary" onclick="spDlg.close()">キャンセル</button>
+      <button class="primary" onclick="saveSplit()">分割する</button>
+    </div>
+  </dialog>
+
+  <dialog id="setDlg">
+    <div class="nav">
+      <button id="setBack" style="text-align:left"></button>
+      <div class="ttl" id="setTitle"></div>
+      <button style="text-align:right" onclick="closeSettings()">完了</button>
+    </div>
+    <div id="setBody"></div>
+  </dialog>
+
+<script>
+  // ===== 接続設定（この端末だけに保存。GitHub には置かない） =====
+  const CFG = (() => { try { return JSON.parse(localStorage.getItem('kakeibo:cfg')) || {}; } catch (_) { return {}; } })();
+  const KEY = CFG.key || '';
+
+  // google.script.run と同じ書き方で、Apps Script の API（doPost）を呼ぶ
+  var google = { script: { run: makeRun() } };
+  function makeRun(ok, ng) {
+    return new Proxy({}, { get(_, name) {
+      if (name === 'withSuccessHandler') return f => makeRun(f, ng);
+      if (name === 'withFailureHandler') return f => makeRun(ok, f);
+      return (...args) => callApi(name, args).then(r => { if (ok) ok(r); }, e => { if (ng) ng(e); else console.error(e); });
+    } });
+  }
+  async function callApi(fn, args) {
+    let res;
+    try {
+      res = await fetch(CFG.api, {
+        method: 'POST', redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 余計な事前確認（CORS）を起こさない
+        body: JSON.stringify({ fn, args }),
+      });
+    } catch (e) { throw new Error('通信できませんでした'); }
+    let j;
+    try { j = await res.json(); } catch (e) { throw new Error('サーバーの応答を読めませんでした（URLを確認してください）'); }
+    if (!j.ok) throw new Error(j.error === 'unauthorized' ? '合言葉が違います（接続設定をやり直してください）' : j.error);
+    return j.result;
+  }
+
+  // 初回の接続設定
+  function saveSetup() {
+    const v = document.getElementById('setupUrl').value.trim();
+    let u;
+    try { u = new URL(v); } catch (_) { alert('URLの形が正しくありません'); return; }
+    const key = u.searchParams.get('key');
+    if (!/\/exec$/.test(u.pathname) || !key) { alert('末尾が「/exec?key=…」の家計簿のURLを貼り付けてください'); return; }
+    try { localStorage.setItem('kakeibo:cfg', JSON.stringify({ api: u.origin + u.pathname, key })); }
+    catch (_) { alert('この端末に保存できませんでした（プライベートブラウズでは保存できません）'); return; }
+    location.reload();
+  }
+  function resetConnection() {
+    if (!confirm('この端末の接続設定を消して、最初からやり直しますか？\n（家計簿のデータは消えません）')) return;
+    try { localStorage.removeItem('kakeibo:cfg'); } catch (_) {}
+    location.reload();
+  }
+  let startAdd = ['income', 'expense'].includes(new URLSearchParams(location.search).get('add')) ? new URLSearchParams(location.search).get('add') : ''; // ウィジェットの＋／−ボタンから開いたときは追加画面を開く
+  const INITIAL = null; // サーバーで先に用意した最初の表示データ
+  const setDlg = document.getElementById('setDlg');
+  let S = null, stack = [], ruleCats = [], saving = Promise.resolve();
+  const SHIFT = { next:'次の平日にずらす', prev:'前の平日にずらす', none:'ずらさない' };
+  const SHIFT_SHORT = { next:'（休日は翌営業日）', prev:'（休日は前営業日）' };
+  const SEC = {
+    senders:      { title:'差出人',       ph:'例：jp-bank.japanpost.jp', hint:'メールアドレスの一部でOKです。' },
+    subjectWords: { title:'件名キーワード', ph:'例：デビット',             hint:'どれか1つでも件名に含まれれば取り込みます。全部消すと差出人だけで判定します。' },
+    categories:   { title:'カテゴリ',     ph:'例：美容',                 hint:'' },
+    incomeCategories: { title:'入金カテゴリ', ph:'例：ポイント',          hint:'入金の明細で使うカテゴリです。' },
+    excludeStores:{ title:'集計しない店名', ph:'例：モバイルSuica',        hint:'店名にこの文字が含まれるメールは「集計外」として取り込みます。Suicaのチャージなど、支出ではないものに使います。これから取り込む分に反映されます。' },
+  };
+
+  function openSettings() {
+    google.script.run.withSuccessHandler(s => {
+      S = s; stack = [{ v:'menu' }]; renderSet(); setDlg.showModal();
+    }).loadSettings(KEY);
+  }
+  function closeSettings() { setDlg.close(); saving.then(load); }
+  function go(view) { stack.push(view); renderSet(); setDlg.scrollTop = 0; }
+  function back() { stack.pop(); renderSet(); }
+
+  // 変更のたびに順番に保存
+  function persist() {
+    const snap = JSON.parse(JSON.stringify(S));
+    saving = saving.then(() => new Promise(r =>
+      google.script.run.withSuccessHandler(r).withFailureHandler(e => { alert('保存に失敗しました'); r(); }).saveSettings(KEY, snap)));
+  }
+
+  const group = (cells, moveFn) => `<div class="group"${moveFn ? ` data-move="${moveFn}"` : ''}>${cells.join('')}</div>`;
+  const grip = '<span class="grip" onclick="event.stopPropagation()">≡</span>';
+  const navCell = (label, cnt, onclick) =>
+    `<div class="cell link" onclick="${onclick}"><span class="txt">${esc(label)}</span><span class="cnt">${cnt}</span><span class="chev">›</span></div>`;
+  const hint = t => t ? `<div class="hint">${t}</div>` : '';
+  const addRow = (ph, fn) =>
+    `<div class="addrow"><input id="newItem" type="text" placeholder="${esc(ph)}" onkeydown="if(event.key==='Enter'){${fn}}"><button onclick="${fn}">追加</button></div>`;
+  function itemList(arr, delFn, moveFn) {
+    if (!arr.length) return group(['<div class="cell" style="color:var(--sub)">まだありません</div>']);
+    return group(arr.map((x, i) =>
+      `<div class="cell">${grip}<span class="txt">${esc(x)}</span><button class="del" onclick="${delFn}(${i})">−</button></div>`), moveFn)
+      + (arr.length > 1 ? hint('≡ を押したまま上下に動かすと並び替えできます。') : '');
+  }
+
+  function renderSet() {
+    const v = stack[stack.length - 1];
+    const b = document.getElementById('setBack');
+    b.textContent = stack.length > 1 ? '‹ 戻る' : '';
+    b.onclick = stack.length > 1 ? back : null;
+    let title = '', html = '';
+
+    if (v.v === 'menu') {
+      title = '設定';
+      const ruleCount = Object.values(S.autoCategory).reduce((a, w) => a + w.length, 0);
+      html = group([
+        navCell('差出人', S.senders.length, "go({v:'list',k:'senders'})"),
+        navCell('件名キーワード', S.subjectWords.length, "go({v:'list',k:'subjectWords'})"),
+        navCell('カテゴリ', S.categories.length, "go({v:'list',k:'categories'})"),
+        navCell('自動分類ルール', ruleCount, "go({v:'rules'})"),
+        navCell('店名の置き換え', S.storeAlias.length, "go({v:'alias'})"),
+        navCell('入金カテゴリ', S.incomeCategories.length, "go({v:'list',k:'incomeCategories'})"),
+        navCell('固定費・定期入金', S.fixed.length, "go({v:'fixed'})"),
+        navCell('集計しない店名', S.excludeStores.length, "go({v:'list',k:'excludeStores'})"),
+        navCell('家計簿の開始日', S.period.day + '日', "go({v:'period'})"),
+        navCell('支払方法', S.payMethods.length, "go({v:'pay'})"),
+        navCell('予算', yen(Object.values(S.budgets).reduce((a, v) => a + v, 0)), "go({v:'budget'})"),
+      ]) + group(['<div class="cell red" onclick="resetSettings()">初期値に戻す</div>'])
+        + group(['<div class="cell link" style="justify-content:center;color:var(--accent)" onclick="resetConnection()">この端末の接続設定をやり直す</div>']);
+    } else if (v.v === 'list') {
+      const sec = SEC[v.k];
+      title = sec.title;
+      html = itemList(S[v.k], 'removeItem', 'moveItem') + addRow(sec.ph, 'addItem()') + hint(sec.hint);
+    } else if (v.v === 'rules') {
+      title = '自動分類ルール';
+      ruleCats = [...new Set(S.categories.concat(Object.keys(S.autoCategory)))];
+      html = group(ruleCats.map((c, i) => navCell(c, (S.autoCategory[c] || []).length, `go({v:'rule',c:ruleCats[${i}]})`)))
+        + hint('店名にキーワードが含まれていると、そのカテゴリに自動で振り分けます。');
+    } else if (v.v === 'alias') {
+      title = '店名の置き換え';
+      html = itemList(S.storeAlias.map(a => a.from + '　→　' + a.to), 'removeAlias', 'moveAlias')
+        + `<div class="addrow"><input id="aliasFrom" type="text" placeholder="元の店名（一部でOK）"></div>
+           <div class="addrow"><input id="aliasTo" type="text" placeholder="表示する名前" onkeydown="if(event.key==='Enter'){addAlias()}"><button onclick="addAlias()">追加</button></div>`
+        + hint('店名にこの文字が含まれていたら、一覧では右側の名前で表示します。上にあるものが優先です。スプレッドシートには元の店名が残ります。');
+    } else if (v.v === 'fixed') {
+      title = '固定費・定期入金';
+      html = (S.fixed.length ? group(S.fixed.map((f, i) =>
+          `<div class="cell link" onclick="go({v:'fixedEdit',i:${i}})">${grip}<span class="txt">${f.kind === 'income' ? '<span class="src income">入金</span>' : ''}${esc(f.name)}<div class="meta" style="font-size:12px;color:var(--sub)">毎月${f.day}日${SHIFT_SHORT[f.shift] || ''}・${esc(f.category)}${f.mode === 'mail' ? '・📧メールで確定（' + esc(f.match) + '）' : ''}${f.until ? '・' + f.until.replace(/-/g, '/') + 'まで' + (f.until < todayStr() ? '（終了）' : '') : ''}</div></span><span class="cnt">${yen(f.amount)}</span><span class="chev">›</span></div>`), 'moveFixed')
+          : group(['<div class="cell" style="color:var(--sub)">まだありません</div>']))
+        + group(['<div class="cell link" style="color:var(--accent);justify-content:center" onclick="go({v:\'fixedEdit\',i:-1})">＋ 固定費・定期入金を追加</div>'])
+        + hint('毎月その日になると、自動で家計簿に記録されます（31日にすると短い月は月末になります）。土日・祝日・年末年始（12/31〜1/3）は休日として扱います。登録した日より前の分は記録されません。');
+    } else if (v.v === 'fixedEdit') {
+      const f = v.i >= 0 ? S.fixed[v.i] : { name:'', amount:'', day:27, category:S.categories[0] || '未分類', until:'', shift:'next', mode:'auto', match:'', kind:'expense' };
+      const fInc = f.kind === 'income';
+      title = v.i >= 0 ? '編集' : '固定費・定期入金を追加';
+      const cats = [...new Set((fInc ? S.incomeCategories : S.categories.concat(['未分類'])).concat([f.category]))].filter(Boolean);
+      let days = '';
+      for (let d = 1; d <= 31; d++) days += `<option value="${d}"${d == f.day ? ' selected' : ''}>${d}日${d === 31 ? '（月末）' : ''}</option>`;
+      html = `<label class="label">区分</label>
+        <select id="fxKind" onchange="fxKindChanged()">
+          <option value="expense"${fInc ? '' : ' selected'}>支出（家賃・サブスクなど）</option>
+          <option value="income"${fInc ? ' selected' : ''}>入金（給料など）</option>
+        </select>
+        <label class="label">名前</label><input id="fxName" type="text" placeholder="例：家賃／給与" value="${esc(f.name)}">
+        <label class="label">金額</label><input id="fxAmount" type="text" inputmode="numeric" class="money" autocomplete="off" placeholder="例：80,000" value="${esc(fmtNum(f.amount))}">
+        <div id="fxModeBox" style="display:${fInc ? 'none' : ''}">
+        <label class="label">記録のしかた</label>
+        <select id="fxMode" onchange="document.getElementById('fxMatchBox').style.display = this.value === 'mail' ? '' : 'none'">
+          <option value="auto"${f.mode !== 'mail' ? ' selected' : ''}>自動で記録（メールが来ないもの）</option>
+          <option value="mail"${f.mode === 'mail' ? ' selected' : ''}>メールで確定（メールでも取り込まれるもの）</option>
+        </select>
+        <div id="fxMatchBox" style="display:${f.mode === 'mail' ? '' : 'none'}">
+          <label class="label">メールの店名に含まれる文字</label>
+          <input id="fxMatch" type="text" placeholder="例：NETFLIX" value="${esc(f.match || '')}">
+          <div class="hint" style="margin-top:-6px">その月にこの文字を含む明細が取り込まれたら、予定は消えてメールの明細に置き換わります。全角／半角・大文字／小文字は区別しません。</div>
+        </div>
+        </div>
+        <label class="label">毎月の日付</label><select id="fxDay">${days}</select>
+        <label class="label">土日・祝日の場合</label>
+        <select id="fxShift">${Object.entries(SHIFT).map(([k, t]) => `<option value="${k}"${k === (f.shift || 'none') ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <div id="fxPayBox" style="display:${fInc ? 'none' : ''}">
+        <label class="label">支払方法</label>
+        <select id="fxPay">${S.payMethods.map(pm => `<option value="${esc(pm.id)}"${pm.id === (f.payMethod || (S.payMethods.find(x => x.type === 'instant') || {}).id) ? ' selected' : ''}>${esc(pm.name)}</option>`).join('')}</select>
+        </div>
+        <label class="label">カテゴリ</label><select id="fxCat">${cats.map(c => `<option${c === f.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
+        <label class="label">終了日（空欄なら終了なし）</label>
+        <div class="addrow" style="margin:6px 0 4px"><input id="fxUntil" type="date" value="${esc(f.until || '')}"><button style="background:var(--line);color:var(--text)" onclick="document.getElementById('fxUntil').value=''">終了なし</button></div>
+        <div class="hint">この日より後の引き落としは記録されません。例：3月分まで払うなら 3月31日。</div>
+        <div class="row" style="margin-top:4px">
+          ${v.i >= 0 ? '<button class="danger" onclick="removeFixed()">削除</button>' : ''}
+          <button class="primary" onclick="saveFixed()">保存</button>
+        </div>
+        <div class="hint" style="margin-top:12px">金額を変えた場合、これから記録される分に反映されます。</div>`;
+    } else if (v.v === 'pay') {
+      title = '支払方法';
+      html = (S.payMethods.length ? group(S.payMethods.map((pm, i) =>
+          `<div class="cell link" onclick="go({v:'payEdit',i:${i}})">${grip}<span class="txt"><span class="src mail" style="margin-right:6px">${esc(pm.short || pm.name)}</span>${esc(pm.name)}<div class="meta" style="font-size:12px;color:var(--sub)">${payDesc(pm)}</div></span><span class="chev">›</span></div>`), 'movePay')
+          : group(['<div class="cell" style="color:var(--sub)">まだありません</div>']))
+        + group(['<div class="cell link" style="color:var(--accent);justify-content:center" onclick="go({v:\'payEdit\',i:-1})">＋ 支払方法を追加</div>'])
+        + hint('メールで取り込んだ明細は、差出人から支払方法を自動で判定します（どれにも当てはまらないときは一番上の「即時」の支払方法）。手入力の明細の初期値は「現金」です。');
+    } else if (v.v === 'payEdit') {
+      const pm = v.i >= 0 ? S.payMethods[v.i] : { name: '', type: 'card', closeDay: 31, payOffset: 1, payDay: 27, shift: 'next', senders: [] };
+      title = v.i >= 0 ? '支払方法を編集' : '支払方法を追加';
+      const dayOpts = (sel, endLabel) => { let o = ''; for (let d = 1; d <= 31; d++) o += `<option value="${d}"${d == sel ? ' selected' : ''}>${d === 31 ? endLabel : d + '日'}</option>`; return o; };
+      html = `<label class="label">名前</label><input id="pmName" type="text" placeholder="例：ライフカード" value="${esc(pm.name)}">
+        <label class="label">ラベル（メールで取り込んだ明細に表示する短い名前）</label>
+        <input id="pmShort" type="text" maxlength="12" placeholder="例：Y-Deb" value="${esc(pm.short || '')}">
+        <label class="label">種類</label>
+        <select id="pmType" onchange="document.getElementById('pmCard').style.display = this.value === 'card' ? '' : 'none'">
+          <option value="instant"${pm.type === 'instant' ? ' selected' : ''}>即時（デビット・口座引落・電子マネーなど）</option>
+          <option value="card"${pm.type === 'card' ? ' selected' : ''}>クレジットカード・後払い（締め日・支払日）</option>
+          <option value="cash"${pm.type === 'cash' ? ' selected' : ''}>現金（今月の出金に含める）</option>
+          <option value="prepaid"${pm.type === 'prepaid' ? ' selected' : ''}>チャージ式（au Payなど。今月の出金に含めない）</option>
+        </select>
+        <div id="pmCard" style="display:${pm.type === 'card' ? '' : 'none'}">
+          <label class="label">締め日</label><select id="pmClose">${dayOpts(pm.closeDay, '末日')}</select>
+          <label class="label">支払日</label>
+          <div class="row" style="margin-bottom:0">
+            <select id="pmOffset" style="flex:1"><option value="1"${pm.payOffset == 1 ? ' selected' : ''}>翌月</option><option value="2"${pm.payOffset == 2 ? ' selected' : ''}>翌々月</option></select>
+            <select id="pmPay" style="flex:1">${dayOpts(pm.payDay, '末日')}</select>
+          </div>
+          <label class="label">支払日が土日・祝日の場合</label>
+          <select id="pmShift">${Object.entries(SHIFT).map(([k, t]) => `<option value="${k}"${k === (pm.shift || 'none') ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        </div>
+        <label class="label">メールの差出人（この支払方法として取り込む）</label>
+        <input id="pmSenders" type="text" placeholder="例：lifecard.co.jp（複数はカンマ区切り）" value="${esc((pm.senders || []).join(', '))}">
+        <div class="hint" style="margin-top:-6px">ここに入れた差出人のメールは、自動で取り込み対象にもなります。</div>
+        <div class="row" style="margin-top:4px">
+          ${v.i >= 0 ? '<button class="danger" onclick="removePay()">削除</button>' : ''}
+          <button class="primary" onclick="savePay()">保存</button>
+        </div>`;
+    } else if (v.v === 'period') {
+      title = '家計簿の開始日';
+      let days = '';
+      for (let d = 1; d <= 31; d++) days += `<option value="${d}"${d == S.period.day ? ' selected' : ''}>${d}日${d === 1 ? '（カレンダー通り）' : d === 31 ? '（月末）' : ''}</option>`;
+      html = `<label class="label">毎月の開始日（給料日など）</label><select id="pDay" onchange="setPeriod()">${days}</select>
+        <label class="label">開始日が土日・祝日の場合</label>
+        <select id="pShift" onchange="setPeriod()">${['prev', 'next', 'none'].map(k => `<option value="${k}"${k === (S.period.shift || 'none') ? ' selected' : ''}>${SHIFT[k]}</option>`).join('')}</select>`
+        + hint('例：25日・前の平日にずらす → 2026年10月25日は日曜なので、10月度は10/23（金）〜11/24、9月度は9/25〜10/22 になります。<br>土日・祝日に加えて年末年始（12/31〜1/3）も休日として扱います。<br>1日・ずらさない にすると、通常のカレンダーの月になります。');
+    } else if (v.v === 'budget') {
+      title = '予算';
+      const cats = [...new Set(S.categories.concat(Object.keys(S.budgets)))];
+      const total = Object.values(S.budgets).reduce((a, x) => a + x, 0);
+      html = `<div class="group">${cats.map(c => `<div class="budrow"><span class="txt">${esc(c)}${S.categories.includes(c) ? '' : '<div class="hint" style="margin:0;color:#ff9500">カテゴリに未登録</div>'}</span>`
+          + `<input type="text" inputmode="numeric" class="money" placeholder="なし" value="${esc(fmtNum(S.budgets[c] || ''))}" onchange="setBudget(${JSON.stringify(c).replace(/"/g, '&quot;')}, this.value)"></div>`).join('')}</div>`
+        + `<div class="hint" style="font-size:14px;color:var(--text)">合計 <b id="budTotal">${yen(total)}</b> ／ 月</div>`
+        + hint('毎月同じ予算が使われます。空欄にするとそのカテゴリの予算はなしになります。「カテゴリに未登録」と出ているものは、カテゴリ名を同じにすると集計されます。');
+    } else if (v.v === 'rule') {
+      title = v.c;
+      html = itemList(S.autoCategory[v.c] || [], 'removeRule', 'moveRule') + addRow('例：セブン', 'addRule()')
+        + hint('店名にこの文字が含まれていたら「' + esc(v.c) + '」になります。');
+    }
+    document.getElementById('setTitle').textContent = title;
+    document.getElementById('setBody').innerHTML = html;
+  }
+
+  function newValue() {
+    const el = document.getElementById('newItem');
+    const val = el ? el.value.trim() : '';
+    return val;
+  }
+  function addItem() {
+    const k = stack[stack.length - 1].k, val = newValue();
+    if (!val) return;
+    if (!S[k].includes(val)) { S[k].push(val); persist(); }
+    renderSet(); document.getElementById('newItem').focus();
+  }
+  function removeItem(i) {
+    const k = stack[stack.length - 1].k;
+    if (!confirm('「' + S[k][i] + '」を削除しますか？')) return;
+    S[k].splice(i, 1); persist(); renderSet();
+  }
+  function addRule() {
+    const c = stack[stack.length - 1].c, val = newValue();
+    if (!val) return;
+    const list = S.autoCategory[c] = S.autoCategory[c] || [];
+    if (!list.includes(val)) { list.push(val); persist(); }
+    renderSet(); document.getElementById('newItem').focus();
+  }
+  function removeRule(i) {
+    const c = stack[stack.length - 1].c, list = S.autoCategory[c];
+    if (!confirm('「' + list[i] + '」を削除しますか？')) return;
+    list.splice(i, 1); persist(); renderSet();
+  }
+
+  function addAlias() {
+    const from = document.getElementById('aliasFrom').value.trim();
+    const to = document.getElementById('aliasTo').value.trim();
+    if (!from || !to) { alert('元の店名と表示する名前の両方を入力してください'); return; }
+    const hit = S.storeAlias.find(a => a.from === from);
+    if (hit) hit.to = to; else S.storeAlias.push({ from, to });
+    persist(); renderSet(); document.getElementById('aliasFrom').focus();
+  }
+  function removeAlias(i) {
+    const a = S.storeAlias[i];
+    if (!confirm('「' + a.from + ' → ' + a.to + '」を削除しますか？')) return;
+    S.storeAlias.splice(i, 1); persist(); renderSet();
+  }
+
+  function todayStr() {
+    const t = new Date();
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  }
+
+  function saveFixed() {
+    const v = stack[stack.length - 1];
+    const name = document.getElementById('fxName').value.trim();
+    const amount = parseMoney(document.getElementById('fxAmount').value);
+    if (!name || !(amount > 0)) { alert('名前と金額を入力してください'); return; }
+    if (document.getElementById('fxMode').value === 'mail' && !document.getElementById('fxMatch').value.trim()) {
+      alert('「メールの店名に含まれる文字」を入力してください'); return;
+    }
+    const t = new Date();
+    const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    const data = {
+      name, amount,
+      day: Number(document.getElementById('fxDay').value),
+      category: document.getElementById('fxCat').value,
+      shift: document.getElementById('fxShift').value,
+      payMethod: document.getElementById('fxPay').value,
+      kind: document.getElementById('fxKind').value,
+      mode: document.getElementById('fxKind').value === 'income' ? 'auto' : document.getElementById('fxMode').value,
+      match: document.getElementById('fxMatch').value.trim(),
+      until: document.getElementById('fxUntil').value || '',
+    };
+    if (v.i >= 0) Object.assign(S.fixed[v.i], data);
+    else S.fixed.push(Object.assign({ id: Date.now().toString(36), since: today }, data));
+    persist(); back();
+  }
+  function fxKindChanged() {
+    const inc = document.getElementById('fxKind').value === 'income';
+    const list = inc ? S.incomeCategories : S.categories.concat(['未分類']);
+    document.getElementById('fxCat').innerHTML = list.map(c => `<option>${esc(c)}</option>`).join('');
+    document.getElementById('fxModeBox').style.display = inc ? 'none' : '';
+    document.getElementById('fxPayBox').style.display = inc ? 'none' : '';
+  }
+
+  function removeFixed() {
+    const v = stack[stack.length - 1];
+    if (!confirm('「' + S.fixed[v.i].name + '」を削除しますか？\n（これまでに記録された分は残ります）')) return;
+    S.fixed.splice(v.i, 1); persist(); back();
+  }
+
+  // ===== 並び替え =====
+  function moveIn(arr, from, to) { const [x] = arr.splice(from, 1); arr.splice(to, 0, x); persist(); renderSet(); }
+  function moveItem(from, to)  { moveIn(S[stack[stack.length - 1].k], from, to); }
+  function moveAlias(from, to) { moveIn(S.storeAlias, from, to); }
+  function moveRule(from, to)  { moveIn(S.autoCategory[stack[stack.length - 1].c], from, to); }
+  function moveFixed(from, to) { moveIn(S.fixed, from, to); }
+
+  let drag = null;
+  document.addEventListener('pointerdown', e => {
+    const g = e.target.closest('.grip');
+    if (!g) return;
+    const cell = g.closest('.cell'), grp = cell.parentElement;
+    if (!grp.dataset.move) return;
+    e.preventDefault();
+    drag = { cell, grp, from: [...grp.children].indexOf(cell), fn: grp.dataset.move };
+    cell.classList.add('dragging');
+    try { g.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  document.addEventListener('pointermove', e => {
+    if (!drag) return;
+    e.preventDefault();
+    let before = null;
+    for (const c of drag.grp.children) {
+      if (c === drag.cell) continue;
+      const r = c.getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) { before = c; break; }
+    }
+    if (drag.cell.nextSibling !== before) drag.grp.insertBefore(drag.cell, before);
+    const d = setDlg.getBoundingClientRect(); // 端に来たら自動スクロール
+    if (e.clientY < d.top + 50) setDlg.scrollTop -= 10;
+    else if (e.clientY > d.bottom - 50) setDlg.scrollTop += 10;
+  }, { passive: false });
+  function endDrag() {
+    if (!drag) return;
+    const { cell, grp, from, fn } = drag;
+    drag = null;
+    cell.classList.remove('dragging');
+    const to = [...grp.children].indexOf(cell);
+    if (to !== from) window[fn](from, to);
+  }
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+
+  // ===== 支払方法 =====
+  function payDesc(pm) {
+    if (pm.type === 'cash') return '現金（今月の出金に含める）';
+    if (pm.type === 'prepaid') return 'チャージ式（今月の出金に含めない）';
+    if (pm.type === 'instant') return '即時' + (pm.senders && pm.senders.length ? '・📧' + esc(pm.senders.join(', ')) : '');
+    const d = n => n === 31 ? '末日' : n + '日';
+    return `${d(pm.closeDay)}締め・${pm.payOffset == 2 ? '翌々月' : '翌月'}${d(pm.payDay)}払い${SHIFT_SHORT[pm.shift] || ''}`
+      + (pm.senders && pm.senders.length ? '・📧' + esc(pm.senders.join(', ')) : '');
+  }
+  function savePay() {
+    const v = stack[stack.length - 1];
+    const name = document.getElementById('pmName').value.trim();
+    if (!name) { alert('名前を入力してください'); return; }
+    const data = {
+      name, type: document.getElementById('pmType').value,
+      short: document.getElementById('pmShort').value.trim() || name,
+      closeDay: Number(document.getElementById('pmClose').value),
+      payOffset: Number(document.getElementById('pmOffset').value),
+      payDay: Number(document.getElementById('pmPay').value),
+      shift: document.getElementById('pmShift').value,
+      senders: document.getElementById('pmSenders').value.split(/[,、，\s]+/).map(x => x.trim()).filter(Boolean),
+    };
+    if (v.i >= 0) Object.assign(S.payMethods[v.i], data);
+    else S.payMethods.push(Object.assign({ id: Date.now().toString(36) }, data));
+    persist(); back();
+  }
+  function removePay() {
+    const v = stack[stack.length - 1];
+    if (!confirm('「' + S.payMethods[v.i].name + '」を削除しますか？\n（この支払方法の明細は、一番上の即時の支払方法として扱われます）')) return;
+    S.payMethods.splice(v.i, 1); persist(); back();
+  }
+  function movePay(from, to) { moveIn(S.payMethods, from, to); }
+
+  function setPeriod() {
+    S.period = { day: Number(document.getElementById('pDay').value), shift: document.getElementById('pShift').value };
+    curReady = false; // 閉じたら今日を含む月度を表示し直す
+    persist();
+  }
+
+  function setBudget(c, val) {
+    const n = parseMoney(val);
+    if (n > 0) S.budgets[c] = n; else delete S.budgets[c];
+    persist();
+    const t = document.getElementById('budTotal');
+    if (t) t.textContent = yen(Object.values(S.budgets).reduce((a, x) => a + x, 0));
+  }
+
+  function resetSettings() {
+    if (!confirm('設定を初期値に戻しますか？')) return;
+    saving = saving.then(() => new Promise(r => google.script.run.withSuccessHandler(r).resetSettings(KEY)));
+    saving.then(() => google.script.run.withSuccessHandler(s => { S = s; stack = [{ v:'menu' }]; renderSet(); }).loadSettings(KEY));
+  }
+
+  const SRC = { mail:'メール', fixed:'固定費', manual:'手入力' };
+  let cur = new Date(); cur.setDate(1);
+  let curReady = false; // 最初は「今日を含む月度」をサーバーに決めてもらう
+  let data = { items: [], categories: [] };
+  let editing = null;
+  const dlg = document.getElementById('dlg');
+  const yen = n => '¥' + n.toLocaleString();
+  const ym = () => cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0');
+
+  function openStartAdd() {
+    if (startAdd) { const k = startAdd; startAdd = ''; openAdd(); setKind(k); }
+  }
+  // 保存などの操作：画面はすぐ閉じて、サーバーから返ってきた最新データで表示し直す
+  function receive(d) {
+    ++loadSeq; // 途中の読み込み結果は使わない
+    cacheSet(d.ym, d);
+    applyData(d, false);
+    if (allMode()) runSearch();
+  }
+  function act(name, args, after) {
+    setStale(true);
+    google.script.run.withSuccessHandler(d => { if (after) after(); receive(d); })
+      .withFailureHandler(e => { if (after) after(); setStale(false); alert('保存に失敗しました：' + e.message); load(); })
+      .act(KEY, name, args, curReady ? ym() : 'current');
+  }
+
+  // ===== 読み込み（前回の表示をすぐ出して、裏で最新に更新） =====
+  let stale = false, loadSeq = 0;
+  function cacheGet(k) { try { return JSON.parse(localStorage.getItem('kakeibo:' + k)); } catch (_) { return null; } }
+  function cacheSet(k, v) { try { localStorage.setItem('kakeibo:' + k, JSON.stringify(v)); } catch (_) {} }
+  function setStale(on) {
+    stale = on;
+    document.body.classList.toggle('stale', on);
+    const el = document.getElementById('loadingTxt');
+    if (el) el.style.display = on ? '' : 'none';
+  }
+  function showHeader(d) {
+    const [yy, mm] = d.ym.split('-').map(Number);
+    const fmt = t => Number(t.slice(5, 7)) + '/' + Number(t.slice(8, 10));
+    document.getElementById('month').innerHTML = (d.custom
+      ? `${yy}年${mm}月度<div class="prange">${fmt(d.period.start)}〜${fmt(d.period.end)}</div>`
+      : `${yy}年${mm}月`) + '<div class="prange" id="loadingTxt" style="display:none">更新中…</div>';
+  }
+  function applyData(d, isStale) {
+    data = d;
+    const [yy, mm] = d.ym.split('-').map(Number);
+    cur = new Date(yy, mm - 1, 1); curReady = true;
+    showHeader(d); render(); setStale(isStale);
+  }
+  function load() {
+    const req = curReady ? ym() : 'current', seq = ++loadSeq;
+    const cached = cacheGet(req);
+    if (cached && cached.ym) {
+      applyData(cached, true);                 // 前回の内容をすぐ表示
+    } else if (data.ym && (req === 'current' || data.ym === req)) {
+      setStale(true);                          // 同じ月なら今の表示のまま更新
+    } else {
+      const [yy, mm] = req === 'current' ? [cur.getFullYear(), cur.getMonth() + 1] : req.split('-').map(Number);
+      document.getElementById('month').innerHTML = `${yy}年${mm}月${data.custom ? '度' : ''}<div class="prange" id="loadingTxt">読み込み中…</div>`;
+      document.getElementById('list').innerHTML = '<div class="empty">読み込み中…</div>';
+      setStale(true);
+    }
+    google.script.run.withSuccessHandler(d => {
+      if (seq !== loadSeq) return;             // 途中で別の月に移動した場合は捨てる
+      cacheSet(req, d); cacheSet(d.ym, d);
+      applyData(d, false);
+      openStartAdd();
+      if (allMode()) runSearch();
+    }).withFailureHandler(e => {
+      if (seq !== loadSeq) return;
+      setStale(false);
+      alert('読み込みに失敗しました：' + e.message);
+    }).getMonth(KEY, req);
+  }
+
+  function render() {
+    const exp = data.items.filter(i => i.kind !== 'income');   // 支出
+    const inc = data.items.filter(i => i.kind === 'income');   // 入金
+    const pend = exp.filter(i => i.pending);
+    const counted = exp.filter(i => !i.excluded && !i.pending);
+    const excl = exp.filter(i => i.excluded && !i.pending);
+    const sum = a => yen(a.reduce((s, i) => s + i.amount, 0));
+    // 支出 ＝ 確定済み ＋ 確定前
+    document.getElementById('total').textContent = sum(counted.concat(pend));
+    // カード払い：何月度に引き落とされるかごとの内訳
+    const due = data.cardDue || [];
+    const dueTotal = due.reduce((a, x) => a + x.amount, 0);
+    const unit = data.custom ? '月度' : '月';
+    const dueTxt = due.length ? '（' + due.map(x => Number(x.ym.slice(5, 7)) + unit + ' ' + yen(x.amount)).join('／') + '）' : '';
+    document.getElementById('exclTotal').innerHTML =
+      `<div>確定前：${sum(pend)}</div><div>カード払い：${yen(dueTotal)}${dueTxt}</div><div>集計外：${sum(excl)}</div>`;
+
+    renderOutflow();
+    renderIncome(inc);
+
+    // カテゴリ別（予算つき）
+    const budgets = data.budgets || {};
+    const byCat = {}, pendCat = {};
+    counted.forEach(i => byCat[i.category] = (byCat[i.category] || 0) + i.amount);
+    pend.forEach(i => pendCat[i.category] = (pendCat[i.category] || 0) + i.amount);
+    const order = c => c === UNCAT ? -1 : (data.categories.indexOf(c) + 1 || 999);
+    const names = [...new Set(Object.keys(byCat).concat(Object.keys(budgets), Object.keys(pendCat)))]
+      .sort((a, b) => order(a) - order(b));
+
+    const budTotal = Object.values(budgets).reduce((a, v) => a + v, 0);
+    const spent = counted.concat(pend).reduce((a, i) => a + i.amount, 0); // 確定前も含めた見込み
+    // 予算の残り（カテゴリ別の上に表示）
+    const budHead = budTotal
+      ? `<div class="budhead${spent > budTotal ? ' over' : ''}"><span class="label">${spent > budTotal ? '予算オーバー' : '予算残り'}</span>`
+        + `<b>${yen(Math.abs(budTotal - spent))}</b><span class="bt">予算 ${yen(budTotal)}</span></div>`
+      : '';
+
+    document.getElementById('byCat').innerHTML = budHead + (names.length
+      ? names.map(c => {
+          const v = byCat[c] || 0, b = budgets[c] || 0, pv = pendCat[c] || 0;
+          const used = v + pv; // 確定前も含めて予算と比べる
+          let meter = '';
+          if (b) {
+            const pct = Math.min(v / b, 1) * 100, ppct = Math.max(Math.min(used / b, 1) * 100 - pct, 0);
+            const cls = used > b ? 'over' : used >= b * 0.8 ? 'warn' : '';
+            meter = `<div class="meter"><i class="${cls}" style="width:${pct}%"></i><i class="pend" style="width:${ppct}%"></i></div>`
+              + `<div class="brest${used > b ? ' over' : ''}">${used > b ? yen(used - b) + ' オーバー' : '残り ' + yen(b - used)}${pv ? '（うち確定前 ' + yen(pv) + '）' : ''}</div>`;
+          }
+          return `<div class="bar link${c === UNCAT ? ' uncat' : ''}${c === filterCat ? ' on' : ''}" onclick="setFilter(${JSON.stringify(c).replace(/"/g, '&quot;')})">`
+            + `<div class="brow"><span class="bname">${c === UNCAT ? '⚠ ' : ''}${esc(c)}</span><span>${yen(used)}${b ? `<span class="bud"> / ${yen(b)}</span>` : ''}</span></div>${meter}</div>`;
+        }).join('')
+      : '<div class="empty">データなし</div>');
+
+    // カテゴリの絞り込み
+    const base = baseItems();
+    if (filterCat && !base.some(i => i.category === filterCat)) filterCat = '';
+    const view = visibleItems();
+    const present = [...new Set(base.map(i => i.category))]
+      .sort((a, b) => (a === UNCAT ? -1 : b === UNCAT ? 1 : data.categories.indexOf(a) - data.categories.indexOf(b)));
+    const chip = (c, label, n) => `<button class="chip${c === filterCat ? ' on' : ''}${c === UNCAT ? ' uncat' : ''}" onclick="setFilter(${JSON.stringify(c).replace(/"/g, '&quot;')})">${label}<span class="n">${n}</span></button>`;
+    const chips = base.length
+      ? '<div class="chips">' + chip('', 'すべて', base.length)
+        + present.map(c => chip(c, (c === UNCAT ? '⚠ ' : '') + esc(c), base.filter(i => i.category === c).length)).join('') + '</div>'
+      : '';
+    const fexp = view.filter(x => x.i.kind !== 'income' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
+    const finc = view.filter(x => x.i.kind === 'income' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
+    const fsumTxt = (fexp || !finc ? yen(fexp) : '') + (finc ? `${fexp ? '・' : ''}<span class="dinc">入金 +${yen(finc)}</span>` : '');
+    const finfo = filterCat ? `<div class="finfo">「${esc(filterCat)}」の合計 <b>${fsumTxt}</b>（${view.length}件）<button onclick="setFilter('')">解除</button></div>` : '';
+
+    const searching = !!searchQ();
+    const finfo2 = searching && !filterCat
+      ? `<div class="finfo">${allMode() ? '全期間で' : ''}「${esc(searchQ())}」を含む明細 <b>${fsumTxt}</b>（${view.length}件）${searchBusy ? '・検索中…' : ''}</div>` : '';
+    document.getElementById('list').innerHTML = (base.length || searching)
+      ? '<div class="listtop"><div class="legend">' + mailLegend() + '<span class="src fixed">固定費</span><span class="src manual">手入力</span><span class="src income">入金</span><span class="src pend">確定前</span></div>'
+        + (selMode ? '' : '<button onclick="startSelect()">☑ カテゴリ一括変更</button>') + '</div>'
+        + chips + finfo + finfo2
+        + view.map(({ i, k }, n) => dayHead(i, n, view) + `
+        <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}" onclick="tapItem(${k})">
+          ${selMode ? (i.pending ? '<span class="ck" style="visibility:hidden"></span>' : `<span class="ck${selected.has(i.row) ? ' on' : ''}">✓</span>`) : ''}
+          <div><div class="store">${esc(i.store || '(店名なし)')}</div>${i.rawStore && i.rawStore !== i.store ? `<div class="orig">${esc(i.rawStore)}</div>` : ''}
+          <div class="meta"><span class="src ${i.kind === 'income' ? 'income' : i.source}">${i.kind === 'income' ? '入金' : srcLabel(i)}</span>${i.pending ? (i.overdue ? '<span class="src pend overdue">未着</span>' : '<span class="src pend">確定前</span>') : ''}${i.split ? '<span class="src split">分割</span>' : ''}${i.excluded ? '<span class="src excl">集計外</span>' : ''}${i.category === UNCAT ? '<span class="cat-uncat">⚠ 未分類</span>' : esc(i.category)}${i.source === 'mail' || i.kind === 'income' ? '' : methodTypeOf(i.method) === 'card' ? '・💳' + esc(methodName(i.method)) : ['cash', 'prepaid'].includes(methodTypeOf(i.method)) ? '・💴' + esc(methodName(i.method)) : ''}${i.memo && i.memo !== '固定費' ? '・' + esc(i.memo) : ''}</div></div>
+          <div class="amt">${i.kind === 'income' ? '+' : ''}${yen(i.amount)}</div>
+        </div>`).join('')
+        + (view.length ? '' : `<div class="empty">${searchBusy ? '検索中…' : '該当する明細はありません'}</div>`)
+      : '<div class="empty">この月の明細はありません</div>';
+
+  }
+
+  // 日付ごとの見出し行（その日の合計つき）
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  function dayHead(i, n, view) {
+    if (n > 0 && view[n - 1].i.date === i.date) return '';
+    const same = view.map(x => x.i).filter(x => x.date === i.date);
+    const total = same.filter(x => x.kind !== 'income' && !x.excluded && !x.pending).reduce((a, x) => a + x.amount, 0);
+    const pend = same.filter(x => x.kind !== 'income' && x.pending).reduce((a, x) => a + x.amount, 0);
+    const inc = same.filter(x => x.kind === 'income' && !x.excluded).reduce((a, x) => a + x.amount, 0);
+    const [y, m, d] = i.date.split('-').map(Number);
+    const wd = new Date(y, m - 1, d).getDay();
+    const cls = wd === 0 ? 'sun' : wd === 6 ? 'sat' : '';
+    const add = selMode ? '' : `<button class="dayadd" onclick="openAdd('${i.date}')" aria-label="この日に追加">＋</button>`;
+    return `<div class="day"><span class="dt ${cls}">${allMode() ? y + '/' : ''}${m}/${d}（${WD[wd]}）${add}</span>`
+      + `<span>${inc ? `<span class="dsub dinc">入金 +${yen(inc)}</span>` : ''}${pend ? `<span class="dsub">確定前 ${yen(pend)}</span>` : ''}<span class="dsum">${total || (!pend && !inc) ? yen(total) : ''}</span></span></div>`;
+  }
+
+  // ===== 金額入力（3桁ごとにカンマ） =====
+  const digitsOf = v => String(v ?? '').normalize('NFKC').replace(/\D/g, '');
+  const fmtNum = v => { const d = digitsOf(v).replace(/^0+(?=\d)/, ''); return d ? d.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''; };
+  const parseMoney = v => Number(digitsOf(v)) || 0;
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (!el.classList || !el.classList.contains('money')) return;
+    const before = digitsOf(el.value.slice(0, el.selectionStart)).length; // カーソルより前の数字の数
+    el.value = fmtNum(el.value);
+    let p = 0, c = 0;
+    while (p < el.value.length && c < before) { if (/\d/.test(el.value[p])) c++; p++; }
+    try { el.setSelectionRange(p, p); } catch (_) {}
+  }, true);
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function move(n) { cur.setMonth(cur.getMonth() + n); selected.clear(); load(); }
+
+  // ===== 明細の支払方法 =====
+  function defaultMethodId(source) {
+    const ms = data.payMethods || [];
+    const pick = t => (ms.find(m => m.type === t) || ms[0] || {}).id || '';
+    if (source === 'manual') return ms.some(m => m.id === 'cash') ? 'cash' : pick('cash');
+    return pick('instant');
+  }
+  function fillMethods(id, sel) {
+    const ms = data.payMethods || [];
+    document.getElementById(id).innerHTML = ms.map(m => `<option value="${esc(m.id)}"${m.id === sel ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
+  }
+  const methodName = id => ((data.payMethods || []).find(m => m.id === id) || {}).name || '';
+  // メールで取り込んだ明細のラベル＝支払方法のラベル（例：Y-Deb）
+  function srcLabel(i) {
+    if (i.source !== 'mail') return SRC[i.source];
+    const m = (data.payMethods || []).find(x => x.id === i.method);
+    return esc((m && (m.short || m.name)) || 'メール');
+  }
+  function mailLegend() {
+    const used = [...new Set(baseItems().filter(i => i.source === 'mail').map(i => srcLabel(i)))];
+    return (used.length ? used : ['メール']).map(t => `<span class="src mail">${t}</span>`).join('');
+  }
+  const methodTypeOf = id => ((data.payMethods || []).find(m => m.id === id) || {}).type || 'instant';
+
+  function renderOutflow() {
+    const o = data.outflow, el = document.getElementById('outflow');
+    if (!o) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    // 今月の支出と同じ形：合計（確定前を含む）＋確定前
+    el.innerHTML = `<div class="label">今月の出金</div>`
+      + `<div class="total">${yen(o.total + (o.pending || 0))}</div>`
+      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)}</div>`;
+  }
+
+  // ===== 今月の入金・今月の収支 =====
+  const signed = v => (v >= 0 ? '+' : '−') + yen(Math.abs(v));
+  function renderIncome(inc) {
+    const conf = inc.filter(i => !i.pending && !i.excluded).reduce((a, i) => a + i.amount, 0);
+    const pend = inc.filter(i => i.pending).reduce((a, i) => a + i.amount, 0);
+    const ic = document.getElementById('incomeCard'), bc = document.getElementById('balanceCard');
+    ic.style.display = ''; bc.style.display = '';
+    ic.innerHTML = `<div class="label">今月の入金</div><div class="total">${yen(conf + pend)}</div>`
+      + `<div class="label" style="margin-top:4px">確定前：${yen(pend)}</div>`;
+    const o = data.outflow || { total: 0, pending: 0 };
+    const bal = conf + pend - (o.total + (o.pending || 0));   // 確定前を含む見込み
+    const balConf = conf - o.total;                            // 確定済みだけ
+    bc.innerHTML = `<div class="label">今月の収支（入金 − 出金）</div>`
+      + `<div class="total ${bal >= 0 ? 'pos' : 'neg'}">${signed(bal)}</div>`
+      + `<div class="label" style="margin-top:4px">確定済のみ：${signed(balConf)}</div>`;
+  }
+
+  // ===== 確定前の固定費・定期入金を確定 =====
+  const cfDlg = document.getElementById('cfDlg');
+  let cfItem = null;
+  function openConfirm(it) {
+    cfItem = it;
+    document.getElementById('cfTitle').textContent = (it.kind === 'income' ? '入金を確定：' : '固定費を確定：') + it.store;
+    document.getElementById('cfInfo').textContent = Number(it.date.slice(5, 7)) + '/' + Number(it.date.slice(8, 10)) + '・' + it.category + '・予定 ' + yen(it.amount);
+    document.getElementById('cfAmount').value = fmtNum(it.amount);
+    cfDlg.showModal(); noAutoFocus(cfDlg);
+  }
+  function doConfirm() {
+    const amount = parseMoney(document.getElementById('cfAmount').value);
+    if (!(amount > 0)) { alert('金額を入力してください'); return; }
+    cfDlg.close();
+    act('confirmFixed', [cfItem.occ, amount]);
+  }
+
+  // ===== 支出／入金の切り替え（追加画面） =====
+  let addKind = 'expense';
+  const catsFor = kind => kind === 'income' ? (data.incomeCategories || []) : data.categories;
+  function fillCats(kind, sel) {
+    const list = catsFor(kind).slice();
+    if (sel && !list.includes(sel)) list.push(sel);
+    document.getElementById('fCat').innerHTML = list.map(c => `<option${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  }
+  function kindUi(kind) {
+    const inc = kind === 'income';
+    document.getElementById('methodBox').style.display = inc ? 'none' : '';
+    document.getElementById('fExclLabel').textContent = inc ? '入金として集計しない' : '支出として集計しない';
+    document.getElementById('fStoreLabel').textContent = inc ? '入金元（会社名など）' : '店名';
+  }
+  function setKind(kind) {
+    addKind = kind;
+    document.querySelectorAll('#kindSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === kind));
+    document.getElementById('dlgTitle').textContent = kind === 'income' ? '入金を追加' : '支出を追加';
+    fillCats(kind, catsFor(kind).includes(filterCat) ? filterCat : catsFor(kind)[0]);
+    kindUi(kind);
+  }
+
+  // ===== 店名で検索 =====
+  let searchData = [], searchBusy = false, searchTimer = null, searchSeq = 0;
+  const searchQ = () => (document.getElementById('q').value || '').trim();
+  const allMode = () => !!searchQ() && document.getElementById('qAll').checked;
+  const normQ = t => String(t || '').normalize('NFKC').toUpperCase().replace(/[－―ー‐]/g, '-');
+  function baseItems() { return allMode() ? searchData : data.items; }
+  function onSearch() {
+    clearTimeout(searchTimer);
+    if (allMode()) { searchBusy = true; render(); searchTimer = setTimeout(runSearch, 400); }
+    else { searchBusy = false; render(); }
+  }
+  function runSearch() {
+    const q = searchQ(), seq = ++searchSeq;
+    if (!q) return;
+    searchBusy = true;
+    google.script.run.withSuccessHandler(r => {
+      if (seq !== searchSeq) return; // 古い検索結果は捨てる
+      searchData = r; searchBusy = false; render();
+    }).withFailureHandler(() => { searchBusy = false; render(); }).searchEntries(KEY, q);
+  }
+
+  // ===== カテゴリの絞り込み =====
+  const UNCAT = '未分類';
+  let filterCat = '';
+  function visibleItems() {
+    const kw = normQ(searchQ());
+    return baseItems().map((i, k) => ({ i, k }))
+      .filter(x => !filterCat || x.i.category === filterCat)
+      .filter(x => allMode() || !kw || [x.i.store, x.i.rawStore, x.i.aliasStore].some(t => normQ(t).includes(kw)));
+  }
+  function setFilter(c) {
+    filterCat = filterCat === c ? '' : c;
+    render();
+    document.getElementById('list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ===== カテゴリ一括変更 =====
+  let selMode = false;
+  const selected = new Set();
+  function tapItem(k) {
+    if (stale) return; // 更新中は古い内容を編集しないようにする
+    const i = baseItems()[k];
+    if (!selMode) return openEdit(k);
+    if (i.pending) return;
+    selected.has(i.row) ? selected.delete(i.row) : selected.add(i.row);
+    render(); updateSelBar();
+  }
+  function startSelect() {
+    if (stale) return;
+    selMode = true; selected.clear();
+    document.body.classList.add('selecting');
+    document.getElementById('selCat').innerHTML = '<option value="">カテゴリを選択</option>'
+      + [...new Set(data.categories.concat(data.incomeCategories || []))].map(c => `<option>${esc(c)}</option>`).join('');
+    render(); updateSelBar();
+  }
+  function endSelect() {
+    selMode = false; selected.clear();
+    document.body.classList.remove('selecting');
+    render();
+  }
+  function selectAll() {
+    const rows = visibleItems().map(x => x.i).filter(i => !i.pending).map(i => i.row);
+    const all = rows.every(r => selected.has(r));
+    rows.forEach(r => all ? selected.delete(r) : selected.add(r));
+    render(); updateSelBar();
+  }
+  function updateSelBar() {
+    document.getElementById('selCount').textContent = selected.size + '件選択中';
+  }
+  function applyBulk() {
+    const cat = document.getElementById('selCat').value;
+    if (!selected.size) { alert('明細を選択してください'); return; }
+    if (!cat) { alert('変更後のカテゴリを選択してください'); return; }
+    const rows = [...selected];
+    endSelect();
+    act('bulkCategory', [rows, cat]);
+  }
+
+  // ダイアログを開いたとき、入力欄（カレンダーやキーボード）が勝手に開かないようにする
+  function noAutoFocus(d) {
+    const t = d.querySelector('[autofocus]');
+    if (t) t.focus({ preventScroll: true });
+    else if (document.activeElement) document.activeElement.blur();
+  }
+
+  function openAdd(date) {
+    editing = null;
+    document.getElementById('dlgTitle').textContent = '支出を追加';
+    document.getElementById('addFields').style.display = '';
+    document.getElementById('editFields').style.display = 'none';
+    document.getElementById('splitBtns').style.display = 'none';
+    document.getElementById('btnDel').style.display = 'none';
+    const t = new Date();
+    document.getElementById('fDate').value = typeof date === 'string' ? date
+      : t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    document.getElementById('fAmount').value = '';
+    document.getElementById('fStore').value = '';
+    setKind((data.incomeCategories || []).includes(filterCat) ? 'income' : 'expense'); // 絞り込み中ならそのカテゴリ
+    document.getElementById('fMemo').value = '';
+    document.getElementById('fExcl').checked = false;
+    fillMethods('fMethod', defaultMethodId('manual'));
+    dlg.showModal(); noAutoFocus(dlg);
+  }
+
+  function openEdit(k) {
+    const it = baseItems()[k];
+    if (it.pending && it.pendingMode !== 'mail' && it.occ) return openConfirm(it); // 金額を確認して確定
+    if (it.pending) {
+      alert(it.pendingMode === 'mail'
+        ? (it.overdue
+            ? '引き落とし日を過ぎましたが、まだメールが取り込まれていません。\n「メールから更新」を押すか、店名に含まれる文字の設定を確認してください。\n（その月は不要になった場合は、固定費の終了日を設定してください）'
+            : '確定前の固定費です。メールが取り込まれると、この予定は消えてメールの明細に置き換わります。')
+          + '\n設定は「設定」→「固定費」から変更できます。'
+        : '確定前の固定費です。引き落とし日になると自動で確定します。\n金額や日付は「設定」→「固定費」から変更できます。');
+      return;
+    }
+    editing = baseItems()[k];
+    document.getElementById('dlgTitle').textContent = (editing.store || '支出') + '　' + yen(editing.amount);
+    document.getElementById('addFields').style.display = 'none';
+    document.getElementById('editFields').style.display = '';
+    const isInc = editing.kind === 'income';
+    document.getElementById('splitBtns').style.display = isInc ? 'none' : '';
+    document.getElementById('btnUnsplit').style.display = editing.split ? '' : 'none';
+    fillCats(editing.kind, editing.category);
+    kindUi(editing.kind);
+    document.getElementById('fName').value = editing.store;
+    document.getElementById('editDate').style.display = editing.source === 'manual' ? '' : 'none';
+    document.getElementById('fEditDate').value = editing.date;
+    document.getElementById('editAmount').style.display = editing.source === 'manual' || isInc ? '' : 'none';
+    document.getElementById('fEditAmount').value = fmtNum(editing.amount);
+    document.getElementById('fOrig').textContent = '元の店名：' + (editing.rawStore || '(なし)')
+      + (editing.aliasStore !== editing.rawStore ? '　／　置き換え後：' + editing.aliasStore : '');
+    document.getElementById('btnDel').style.display = '';
+    document.getElementById('fCat').value = editing.category;
+    document.getElementById('fMemo').value = editing.memo;
+    document.getElementById('fExcl').checked = editing.excluded;
+    fillMethods('fMethod', editing.method);
+    dlg.showModal(); noAutoFocus(dlg);
+  }
+
+  function save() {
+    const cat = document.getElementById('fCat').value;
+    const memo = document.getElementById('fMemo').value;
+    const excluded = document.getElementById('fExcl').checked;
+    const amtEditable = editing && (editing.source === 'manual' || editing.kind === 'income');
+    if (amtEditable && !(parseMoney(document.getElementById('fEditAmount').value) > 0)) {
+      alert('金額を入力してください'); return;
+    }
+    if (editing) {
+      const args = [editing.row, cat, memo, excluded, customName(),
+        editing.source === 'manual' ? document.getElementById('fEditDate').value : '',
+        amtEditable ? parseMoney(document.getElementById('fEditAmount').value) : 0,
+        document.getElementById('fMethod').value];
+      dlg.close();
+      act('updateEntry', args);
+    } else {
+      const amount = parseMoney(document.getElementById('fAmount').value);
+      if (!amount) return;
+      const entry = {
+        date: document.getElementById('fDate').value, amount,
+        store: document.getElementById('fStore').value, category: cat, memo, excluded,
+        method: document.getElementById('fMethod').value, kind: addKind
+      };
+      dlg.close();
+      act('addEntry', [entry]);
+    }
+  }
+
+  // ===== 分割 =====
+  const spDlg = document.getElementById('spDlg');
+  let spParts = [];
+  function catOptions(sel) {
+    return data.categories.map(c => `<option${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  }
+  function openSplit() {
+    document.getElementById('spInfo').textContent = (editing.store || '支出') + '　合計 ' + yen(editing.amount);
+    spParts = [{ amount: editing.amount, category: editing.category, memo: editing.memo }, { amount: '', category: data.categories[0], memo: '' }];
+    dlg.close(); renderSplit(); spDlg.showModal();
+  }
+  function readSplit() {
+    document.querySelectorAll('#spRows .sp-row').forEach((el, i) => {
+      if (i > 0) spParts[i].amount = el.querySelector('.amt-in').value;
+      spParts[i].category = el.querySelector('select').value;
+    });
+  }
+  function restAmount() {
+    return editing.amount - spParts.slice(1).reduce((a, p) => a + (parseMoney(p.amount) || 0), 0);
+  }
+  function renderSplit() {
+    const rest = restAmount();
+    document.getElementById('spRows').innerHTML = spParts.map((p, i) => i === 0
+      ? `<div class="sp-row"><span class="sp-rest" id="spRest" style="color:${rest > 0 ? 'var(--text)' : '#ff3b30'}">${yen(rest)}</span><select>${catOptions(p.category)}</select></div>`
+      : `<div class="sp-row"><input class="amt-in money" type="text" inputmode="numeric" autocomplete="off" placeholder="金額" value="${esc(fmtNum(p.amount))}" oninput="updateRest()"><select>${catOptions(p.category)}</select><button class="del" onclick="removeSplitRow(${i})">−</button></div>`
+    ).join('');
+  }
+  function updateRest() {
+    readSplit();
+    const rest = restAmount(), el = document.getElementById('spRest');
+    el.textContent = yen(rest);
+    el.style.color = rest > 0 ? 'var(--text)' : '#ff3b30';
+  }
+  function addSplitRow() { readSplit(); spParts.push({ amount: '', category: data.categories[0], memo: '' }); renderSplit(); }
+  function removeSplitRow(i) {
+    readSplit(); spParts.splice(i, 1);
+    if (spParts.length < 2) spParts.push({ amount: '', category: data.categories[0], memo: '' });
+    renderSplit();
+  }
+  function saveSplit() {
+    readSplit();
+    const parts = spParts.map((p, i) => ({ amount: i === 0 ? restAmount() : parseMoney(p.amount), category: p.category, memo: i === 0 ? p.memo : '' }));
+    if (parts.slice(1).some(p => !(p.amount > 0))) { alert('金額を入力してください（空の行は「−」で削除できます）'); return; }
+    if (!(parts[0].amount > 0)) { alert('分割した金額の合計が、元の金額を超えています'); return; }
+    spDlg.close();
+    act('splitEntry', [editing.row, parts]);
+  }
+  function unsplit() {
+    if (!confirm('分割した明細を1つにまとめますか？')) return;
+    dlg.close();
+    act('unsplitEntry', [editing.row]);
+  }
+
+  // 置き換え後の名前と同じなら「変更なし」として保存
+  function customName() {
+    const n = document.getElementById('fName').value.trim();
+    return n && n !== editing.aliasStore ? n : '';
+  }
+  function resetName() { document.getElementById('fName').value = editing.aliasStore; }
+
+  function del() {
+    if (!editing || !confirm('削除しますか？')) return;
+    dlg.close();
+    act('deleteEntry', [editing.row]);
+  }
+
+  function sync() {
+    const b = document.querySelector('.sync'); b.textContent = '更新中…';
+    act('syncNow', [], () => { b.textContent = 'メールから更新'; });
+  }
+
+  // 最初の表示：ページに埋め込まれたデータがあれば、サーバーに問い合わせずにすぐ表示
+  if (!KEY || !CFG.api) document.getElementById('setup').style.display = 'flex';
+  else if (INITIAL && INITIAL.ym) { receive(INITIAL); cacheSet('current', INITIAL); openStartAdd(); }
+  else load();
+
+  // 画面ファイルを端末に保存して、次回から一瞬で開けるようにする
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
