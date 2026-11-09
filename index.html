@@ -266,12 +266,12 @@
 
   <dialog id="dlg">
     <div id="dlgTitle" tabindex="-1" autofocus style="font-weight:600;font-size:17px;margin-bottom:8px;outline:none"></div>
+    <div class="seg" id="kindSeg">
+      <button data-k="expense" onclick="setKind('expense')">支出</button>
+      <button data-k="income" onclick="setKind('income')">入金</button>
+      <button data-k="transfer" onclick="setKind('transfer')">振替</button>
+    </div>
     <div id="addFields">
-      <div class="seg" id="kindSeg">
-        <button data-k="expense" onclick="setKind('expense')">支出</button>
-        <button data-k="income" onclick="setKind('income')">入金</button>
-        <button data-k="transfer" onclick="setKind('transfer')">振替</button>
-      </div>
       <label class="label">日付</label><input type="date" id="fDate">
       <div id="storeBox"><label class="label" id="fStoreLabel">店名</label><input type="text" id="fStore"></div>
       <label class="label">金額</label><input type="text" inputmode="numeric" class="money" id="fAmount" autocomplete="off">
@@ -288,7 +288,7 @@
       </div>
     </div>
     <label class="label" id="fCatLabel">カテゴリ</label><select id="fCat"></select>
-    <div id="methodBox"><label class="label">支払方法</label><select id="fMethod"></select></div>
+    <div id="methodBox"><label class="label" id="fMethodLabel">支払方法</label><select id="fMethod"></select></div>
     <label class="label">メモ</label><input type="text" id="fMemo">
     <label class="chk" id="exclBox"><input type="checkbox" id="fExcl"><span id="fExclLabel">支出として集計しない</span></label>
     <div id="splitBtns">
@@ -454,6 +454,7 @@
         navCell('入金カテゴリ', S.incomeCategories.length, "go({v:'list',k:'incomeCategories'})"),
         navCell('固定費・定期入金', S.fixed.length, "go({v:'fixed'})"),
         navCell('集計しない店名', S.excludeStores.length, "go({v:'list',k:'excludeStores'})"),
+        navCell('振替として取り込む店名', (S.transferRules || []).length, "go({v:'trules'})"),
         navCell('家計簿の開始日', S.period.day + '日', "go({v:'period'})"),
         navCell('支払方法', S.payMethods.length, "go({v:'pay'})"),
         navCell('予算', yen(Object.values(S.budgets).reduce((a, v) => a + v, 0)), "go({v:'budget'})"),
@@ -468,6 +469,17 @@
       ruleCats = [...new Set(S.categories.concat(Object.keys(S.autoCategory)))];
       html = group(ruleCats.map((c, i) => navCell(c, (S.autoCategory[c] || []).length, `go({v:'rule',c:ruleCats[${i}]})`)))
         + hint('店名にキーワードが含まれていると、そのカテゴリに自動で振り分けます。');
+    } else if (v.v === 'trules') {
+      title = '振替として取り込む店名';
+      const targets = S.payMethods.filter(m => m.type === 'prepaid' || m.type === 'cash');
+      const tname = id => (targets.find(m => m.id === id) || {}).name || '最初のチャージ式';
+      S.transferRules = S.transferRules || [];
+      html = itemList(S.transferRules.map(t => t.match + '　→　' + tname(t.to)), 'removeTRule', 'moveTRule')
+        + `<div class="addrow"><input id="trMatch" type="text" placeholder="店名に含まれる文字（例：PAY残高チャージ）"></div>
+           <div class="addrow"><select id="trTo" style="flex:1;font-size:16px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)">
+             ${targets.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>
+             <button onclick="addTRule()">追加</button></div>`
+        + hint('店名にこの文字が含まれるメールは、支出ではなく「振替」（例：au携帯合算 → au Pay）として取り込みます。振替元は、メールの差出人から判定した支払方法です。これから取り込む分に反映されます。');
     } else if (v.v === 'alias') {
       title = '店名の置き換え';
       html = itemList(S.storeAlias.map(a => a.from + '　→　' + a.to), 'removeAlias', 'moveAlias')
@@ -614,6 +626,18 @@
     if (!confirm('「' + list[i] + '」を削除しますか？')) return;
     list.splice(i, 1); persist(); renderSet();
   }
+
+  function addTRule() {
+    const match = document.getElementById('trMatch').value.trim();
+    if (!match) { alert('店名に含まれる文字を入力してください'); return; }
+    S.transferRules.push({ match, to: document.getElementById('trTo').value });
+    persist(); renderSet();
+  }
+  function removeTRule(i) {
+    if (!confirm('「' + S.transferRules[i].match + '」を削除しますか？')) return;
+    S.transferRules.splice(i, 1); persist(); renderSet();
+  }
+  function moveTRule(from, to) { moveIn(S.transferRules, from, to); }
 
   function addAlias() {
     const from = document.getElementById('aliasFrom').value.trim();
@@ -1113,18 +1137,34 @@
   }
   function kindUi(kind) {
     const inc = kind === 'income', tr = kind === 'transfer';
-    document.getElementById('methodBox').style.display = inc || tr ? 'none' : '';
+    document.getElementById('methodBox').style.display = inc ? 'none' : '';
+    document.getElementById('fMethodLabel').textContent = tr ? '振替元（お金が出ていく方）' : '支払方法';
+    if (editing) document.getElementById('splitBtns').style.display = kind === 'expense' ? '' : 'none';
     document.getElementById('exclBox').style.display = tr ? 'none' : '';
     document.getElementById('storeBox').style.display = tr ? 'none' : '';
     document.getElementById('fExclLabel').textContent = inc ? '入金として集計しない' : '支出として集計しない';
     document.getElementById('fStoreLabel').textContent = inc ? '入金元（会社名など）' : '店名';
-    document.getElementById('fCatLabel').textContent = tr ? '振替先（ゆうちょ → ）' : 'カテゴリ';
+    document.getElementById('fCatLabel').textContent = tr ? '振替先（お金が入る方）' : 'カテゴリ';
+  }
+  // 振替先の初期値：明細を振替に変えるときは店名から推測（「au PAY残高チャージ」→ au Pay）。新しく追加するときは現金
+  function defaultTarget() {
+    const ts = transferTargets();
+    if (!editing) return (ts.find(m => m.type === 'cash') || ts[0] || {}).id;
+    const st = normQ(editing.rawStore || editing.store);
+    const hit = ts.find(m => st.includes(normQ(m.name)) || (m.short && st.includes(normQ(m.short))));
+    return (hit || ts.find(m => m.type === 'prepaid') || ts[0] || {}).id;
   }
   function setKind(kind) {
     addKind = kind;
     document.querySelectorAll('#kindSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === kind));
-    document.getElementById('dlgTitle').textContent = kind === 'income' ? '入金を追加' : kind === 'transfer' ? '振替を追加' : '支出を追加';
-    fillCats(kind, catsFor(kind).includes(filterCat) ? filterCat : catsFor(kind)[0]);
+    if (!editing) document.getElementById('dlgTitle').textContent = kind === 'income' ? '入金を追加' : kind === 'transfer' ? '振替を追加' : '支出を追加';
+    const keep = editing && editing.kind === kind; // 編集中で区分が同じなら今の値のまま
+    fillCats(kind, keep ? editing.category : kind === 'transfer' ? defaultTarget() : catsFor(kind).includes(filterCat) ? filterCat : catsFor(kind)[0]);
+    // 支払方法（振替のときは振替元：口座やカード）
+    const ms = (data.payMethods || []).filter(m => kind !== 'transfer' || m.type === 'instant' || m.type === 'card');
+    let msel = editing ? editing.method : kind === 'transfer' ? defaultMethodId('fixed') : defaultMethodId('manual');
+    if (!ms.some(m => m.id === msel)) msel = (ms[0] || {}).id;
+    document.getElementById('fMethod').innerHTML = ms.map(m => `<option value="${esc(m.id)}"${m.id === msel ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
     kindUi(kind);
   }
 
@@ -1228,7 +1268,6 @@
     setKind((data.incomeCategories || []).includes(filterCat) ? 'income' : 'expense'); // 絞り込み中ならそのカテゴリ
     document.getElementById('fMemo').value = '';
     document.getElementById('fExcl').checked = false;
-    fillMethods('fMethod', defaultMethodId('manual'));
     dlg.showModal(); noAutoFocus(dlg);
   }
 
@@ -1251,8 +1290,7 @@
     const isInc = editing.kind === 'income', isTr = editing.kind === 'transfer';
     document.getElementById('splitBtns').style.display = isInc || isTr ? 'none' : '';
     document.getElementById('btnUnsplit').style.display = editing.split ? '' : 'none';
-    fillCats(editing.kind, editing.category);
-    kindUi(editing.kind);
+    setKind(editing.kind);
     document.getElementById('fName').value = editing.store;
     document.getElementById('editDate').style.display = editing.source === 'manual' ? '' : 'none';
     document.getElementById('fEditDate').value = editing.date;
@@ -1261,10 +1299,8 @@
     document.getElementById('fOrig').textContent = '元の店名：' + (editing.rawStore || '(なし)')
       + (editing.aliasStore !== editing.rawStore ? '　／　置き換え後：' + editing.aliasStore : '');
     document.getElementById('btnDel').style.display = '';
-    if (!isTr) document.getElementById('fCat').value = editing.category;
     document.getElementById('fMemo').value = editing.memo;
     document.getElementById('fExcl').checked = editing.excluded;
-    fillMethods('fMethod', editing.method);
     dlg.showModal(); noAutoFocus(dlg);
   }
 
@@ -1280,7 +1316,8 @@
       const args = [editing.row, cat, memo, excluded, customName(),
         editing.source === 'manual' ? document.getElementById('fEditDate').value : '',
         amtEditable ? parseMoney(document.getElementById('fEditAmount').value) : 0,
-        editing.kind === 'transfer' ? editing.method : document.getElementById('fMethod').value];
+        addKind === 'income' ? editing.method : document.getElementById('fMethod').value,
+        addKind];
       dlg.close();
       act('updateEntry', args);
     } else {
@@ -1289,6 +1326,7 @@
       const toM = (data.payMethods || []).find(m => m.id === cat) || {};
       const entry = addKind === 'transfer'
         ? { kind: 'transfer', date: document.getElementById('fDate').value, amount, to: cat, memo,
+            method: document.getElementById('fMethod').value,
             store: toM.type === 'cash' ? 'ATMで引き出し' : (toM.name || '') + 'へチャージ' }
         : { date: document.getElementById('fDate').value, amount,
             store: document.getElementById('fStore').value, category: cat, memo, excluded,
