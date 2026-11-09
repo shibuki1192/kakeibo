@@ -203,6 +203,11 @@
   @media (prefers-color-scheme: dark) { .src.transfer { color:#d08bf5; } }
   .bank-empty { color:var(--accent); font-size:14px; margin-top:8px; line-height:1.5; }
   .offtag { font-size:10px; font-weight:600; color:var(--sub); border:1px solid var(--sub); border-radius:6px; padding:0 5px; margin-left:6px; vertical-align:2px; }
+  .srhead { display:grid; grid-template-columns:1.2fr 1fr .8fr; gap:6px; font-size:11px; color:var(--sub); padding:0 14px 4px 38px; }
+  .cell.sr { display:grid; grid-template-columns:auto 1.2fr 1fr .8fr; gap:6px; font-size:14px; align-items:center; }
+  .cell.sr span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cell.sr .c3 { color:var(--accent); font-size:13px; }
+  .cell.sr .dim { color:var(--sub); }
   .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
   .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
   .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
@@ -446,13 +451,11 @@
 
     if (v.v === 'menu') {
       title = '設定';
-      const ruleCount = Object.values(S.autoCategory).reduce((a, w) => a + w.length, 0);
       html = group([
         navCell('差出人', S.senders.length, "go({v:'list',k:'senders'})"),
         navCell('件名キーワード', S.subjectWords.length, "go({v:'list',k:'subjectWords'})"),
         navCell('カテゴリ', S.categories.length, "go({v:'list',k:'categories'})"),
-        navCell('自動分類ルール', ruleCount, "go({v:'rules'})"),
-        navCell('店名の置き換え', S.storeAlias.length, "go({v:'alias'})"),
+        navCell('店名ルール（表示名・カテゴリ）', S.storeRules.length, "go({v:'srules'})"),
         navCell('入金カテゴリ', S.incomeCategories.length, "go({v:'list',k:'incomeCategories'})"),
         navCell('固定費・定期入金', S.fixed.length, "go({v:'fixed'})"),
         navCell('集計しない店名', S.excludeStores.length, "go({v:'list',k:'excludeStores'})"),
@@ -472,6 +475,31 @@
       ruleCats = [...new Set(S.categories.concat(Object.keys(S.autoCategory)))];
       html = group(ruleCats.map((c, i) => navCell(c, (S.autoCategory[c] || []).length, `go({v:'rule',c:ruleCats[${i}]})`)))
         + hint('店名にキーワードが含まれていると、そのカテゴリに自動で振り分けます。');
+    } else if (v.v === 'srules') {
+      title = '店名ルール';
+      const q = normQ(srFilter);
+      const rows = S.storeRules.map((r, i) => ({ r, i })).filter(x => !q || [x.r.match, x.r.name, x.r.category].some(t => normQ(t).includes(q)));
+      html = `<input type="search" placeholder="🔍 ルールを探す" value="${esc(srFilter)}" id="srQ" oninput="onSrFilter(this.value)" style="width:100%;font-size:16px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);margin-bottom:10px;-webkit-appearance:none">`
+        + `<div class="srhead"><span>元の店名</span><span>表示する店名</span><span>カテゴリ</span></div>`
+        + (rows.length ? group(rows.map(({ r, i }) =>
+            `<div class="cell link sr" onclick="go({v:'sruleEdit',i:${i}})">${q ? '<span></span>' : grip}<span class="c1">${esc(r.match)}</span><span class="c2">${r.name ? esc(r.name) : '<span class="dim">そのまま</span>'}</span><span class="c3">${r.category ? esc(r.category) : '<span class="dim">―</span>'}</span></div>`), q ? '' : 'moveSRule')
+          : group(['<div class="cell" style="color:var(--sub)">' + (q ? '見つかりません' : 'まだありません') + '</div>']))
+        + group(['<div class="cell link" style="color:var(--accent);justify-content:center" onclick="go({v:\'sruleEdit\',i:-1})">＋ ルールを追加</div>'])
+        + group(['<div class="cell link" style="color:var(--accent);justify-content:center" onclick="applyRulesNow()">未分類の明細に今のルールを当てはめる</div>'])
+        + hint('上にあるルールが優先です（≡ で並び替え）。<br>・<b>表示する店名</b>：一覧での表示を変えます。過去の明細にも反映されます。<br>・<b>カテゴリ</b>：メールを取り込むときに付けます。過去の分は「未分類の明細に今のルールを当てはめる」で付けられます。');
+    } else if (v.v === 'sruleEdit') {
+      const r = v.i >= 0 ? S.storeRules[v.i] : { match: '', name: '', category: '' };
+      title = v.i >= 0 ? 'ルールを編集' : 'ルールを追加';
+      const cats = [...new Set(S.categories.concat(r.category ? [r.category] : []))];
+      html = `<label class="label">元の店名に含まれる文字</label><input id="srMatch" type="text" placeholder="例：SEVEN-ELEVEN" value="${esc(r.match)}">
+        <label class="label">表示する店名（空欄ならそのまま）</label><input id="srName" type="text" placeholder="例：コンビニ" value="${esc(r.name)}">
+        <label class="label">カテゴリ</label>
+        <select id="srCat"><option value="">（付けない）</option>${cats.map(c => `<option${c === r.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
+        <div class="hint">全角／半角・大文字／小文字は区別しません。店名の一部だけでも当てはまります。</div>
+        <div class="row" style="margin-top:4px">
+          ${v.i >= 0 ? '<button class="danger" onclick="removeSRule()">削除</button>' : ''}
+          <button class="primary" onclick="saveSRule()">保存</button>
+        </div>`;
     } else if (v.v === 'trules') {
       title = '振替として取り込む店名';
       const targets = S.payMethods.filter(m => m.type === 'prepaid' || m.type === 'cash');
@@ -632,6 +660,36 @@
     const c = stack[stack.length - 1].c, list = S.autoCategory[c];
     if (!confirm('「' + list[i] + '」を削除しますか？')) return;
     list.splice(i, 1); persist(); renderSet();
+  }
+
+  // ===== 店名ルール =====
+  let srFilter = '';
+  function onSrFilter(val) {
+    srFilter = val; renderSet();
+    const el = document.getElementById('srQ');
+    el.focus(); el.setSelectionRange(val.length, val.length);
+  }
+  function saveSRule() {
+    const v = stack[stack.length - 1];
+    const r = {
+      match: document.getElementById('srMatch').value.trim(),
+      name: document.getElementById('srName').value.trim(),
+      category: document.getElementById('srCat').value,
+    };
+    if (!r.match) { alert('元の店名に含まれる文字を入力してください'); return; }
+    if (!r.name && !r.category) { alert('表示する店名かカテゴリのどちらかを入力してください'); return; }
+    if (v.i >= 0) S.storeRules[v.i] = r; else S.storeRules.push(r);
+    persist(); back();
+  }
+  function removeSRule() {
+    const v = stack[stack.length - 1];
+    if (!confirm('「' + S.storeRules[v.i].match + '」のルールを削除しますか？')) return;
+    S.storeRules.splice(v.i, 1); persist(); back();
+  }
+  function moveSRule(from, to) { moveIn(S.storeRules, from, to); }
+  function applyRulesNow() {
+    if (!confirm('カテゴリが「未分類」の明細に、今のルールでカテゴリを付けますか？（全期間）')) return;
+    saving.then(() => { setDlg.close(); act('applyRulesToUncategorized', []); });
   }
 
   function addTRule() {
