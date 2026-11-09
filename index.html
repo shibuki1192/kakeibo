@@ -202,6 +202,7 @@
   .item.transfer .amt { color:var(--sub); }
   @media (prefers-color-scheme: dark) { .src.transfer { color:#d08bf5; } }
   .bank-empty { color:var(--accent); font-size:14px; margin-top:8px; line-height:1.5; }
+  .offtag { font-size:10px; font-weight:600; color:var(--sub); border:1px solid var(--sub); border-radius:6px; padding:0 5px; margin-left:6px; vertical-align:2px; }
   .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
   .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
   .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
@@ -402,6 +403,7 @@
     subjectWords: { title:'件名キーワード', ph:'例：デビット',             hint:'どれか1つでも件名に含まれれば取り込みます。全部消すと差出人だけで判定します。' },
     categories:   { title:'カテゴリ',     ph:'例：美容',                 hint:'' },
     incomeCategories: { title:'入金カテゴリ', ph:'例：ポイント',          hint:'入金の明細で使うカテゴリです。' },
+    offBudget:    { title:'予算外のカテゴリ', ph:'例：特別費',            hint:'ここに入れたカテゴリは、今月の支出には含まれますが、予算残りの計算には含まれません（冠婚葬祭・家電の買い替えなど）。カテゴリ一覧になければ自動で追加されます。' },
     excludeStores:{ title:'集計しない店名', ph:'例：モバイルSuica',        hint:'店名にこの文字が含まれるメールは「集計外」として取り込みます。Suicaのチャージなど、支出ではないものに使います。これから取り込む分に反映されます。' },
   };
 
@@ -457,6 +459,7 @@
         navCell('振替として取り込む店名', (S.transferRules || []).length, "go({v:'trules'})"),
         navCell('家計簿の開始日', S.period.day + '日', "go({v:'period'})"),
         navCell('支払方法', S.payMethods.length, "go({v:'pay'})"),
+        navCell('予算外のカテゴリ', (S.offBudget || []).length, "go({v:'list',k:'offBudget'})"),
         navCell('予算', yen(Object.values(S.budgets).reduce((a, v) => a + v, 0)), "go({v:'budget'})"),
       ]) + group(['<div class="cell red" onclick="resetSettings()">初期値に戻す</div>'])
         + group(['<div class="cell link" style="justify-content:center;color:var(--accent)" onclick="resetConnection()">この端末の接続設定をやり直す</div>']);
@@ -583,12 +586,12 @@
         + hint('例：25日・前の平日にずらす → 2026年10月25日は日曜なので、10月度は10/23（金）〜11/24、9月度は9/25〜10/22 になります。<br>土日・祝日に加えて年末年始（12/31〜1/3）も休日として扱います。<br>1日・ずらさない にすると、通常のカレンダーの月になります。');
     } else if (v.v === 'budget') {
       title = '予算';
-      const cats = [...new Set(S.categories.concat(Object.keys(S.budgets)))];
+      const cats = [...new Set(S.categories.concat(Object.keys(S.budgets)))].filter(c => !(S.offBudget || []).includes(c));
       const total = Object.values(S.budgets).reduce((a, x) => a + x, 0);
       html = `<div class="group">${cats.map(c => `<div class="budrow"><span class="txt">${esc(c)}${S.categories.includes(c) ? '' : '<div class="hint" style="margin:0;color:#ff9500">カテゴリに未登録</div>'}</span>`
           + `<input type="text" inputmode="numeric" class="money" placeholder="なし" value="${esc(fmtNum(S.budgets[c] || ''))}" onchange="setBudget(${JSON.stringify(c).replace(/"/g, '&quot;')}, this.value)"></div>`).join('')}</div>`
         + `<div class="hint" style="font-size:14px;color:var(--text)">合計 <b id="budTotal">${yen(total)}</b> ／ 月</div>`
-        + hint('毎月同じ予算が使われます。空欄にするとそのカテゴリの予算はなしになります。「カテゴリに未登録」と出ているものは、カテゴリ名を同じにすると集計されます。');
+        + hint('毎月同じ予算が使われます。空欄にするとそのカテゴリの予算はなしになります。「カテゴリに未登録」と出ているものは、カテゴリ名を同じにすると集計されます。予算外のカテゴリ（' + esc((S.offBudget || []).join('・') || 'なし') + '）はここに出ません。');
     } else if (v.v === 'rule') {
       title = v.c;
       html = itemList(S.autoCategory[v.c] || [], 'removeRule', 'moveRule') + addRow('例：セブン', 'addRule()')
@@ -606,7 +609,11 @@
   function addItem() {
     const k = stack[stack.length - 1].k, val = newValue();
     if (!val) return;
-    if (!S[k].includes(val)) { S[k].push(val); persist(); }
+    if (!S[k].includes(val)) {
+      S[k].push(val);
+      if (k === 'offBudget' && !S.categories.includes(val)) S.categories.push(val); // カテゴリ一覧にも追加
+      persist();
+    }
     renderSet(); document.getElementById('newItem').focus();
   }
   function removeItem(i) {
@@ -883,7 +890,8 @@
     const unit = data.custom ? '月度' : '月';
     const dueTxt = due.length ? '（' + due.map(x => Number(x.ym.slice(5, 7)) + unit + ' ' + yen(x.amount)).join('／') + '）' : '';
     document.getElementById('exclTotal').innerHTML =
-      `<div>確定前：${sum(pend)}</div><div>カード払い：${yen(dueTotal)}${dueTxt}</div><div>集計外：${sum(excl)}</div>`;
+      `<div>確定前：${sum(pend)}</div><div>カード払い：${yen(dueTotal)}${dueTxt}</div>`
+      + `<div>予算外：${sum(counted.concat(pend).filter(i => isOff(i.category)))}</div><div>集計外：${sum(excl)}</div>`;
 
     renderOutflow();
     renderIncome(inc);
@@ -898,7 +906,8 @@
       .sort((a, b) => order(a) - order(b));
 
     const budTotal = Object.values(budgets).reduce((a, v) => a + v, 0);
-    const spent = counted.concat(pend).reduce((a, i) => a + i.amount, 0); // 確定前も含めた見込み
+    // 予算と比べる支出：確定前を含め、予算外のカテゴリは除く
+    const spent = counted.concat(pend).filter(i => !isOff(i.category)).reduce((a, i) => a + i.amount, 0);
     // 予算の残り（カテゴリ別の上に表示）
     const budHead = budTotal
       ? `<div class="budhead${spent > budTotal ? ' over' : ''}"><span class="label">${spent > budTotal ? '予算オーバー' : '予算残り'}</span>`
@@ -907,7 +916,8 @@
 
     document.getElementById('byCat').innerHTML = budHead + (names.length
       ? names.map(c => {
-          const v = byCat[c] || 0, b = budgets[c] || 0, pv = pendCat[c] || 0;
+          const off = isOff(c);
+          const v = byCat[c] || 0, b = off ? 0 : budgets[c] || 0, pv = pendCat[c] || 0;
           const used = v + pv; // 確定前も含めて予算と比べる
           let meter = '';
           if (b) {
@@ -917,7 +927,7 @@
               + `<div class="brest${used > b ? ' over' : ''}">${used > b ? yen(used - b) + ' オーバー' : '残り ' + yen(b - used)}${pv ? '（うち確定前 ' + yen(pv) + '）' : ''}</div>`;
           }
           return `<div class="bar link${c === UNCAT ? ' uncat' : ''}${c === filterCat ? ' on' : ''}" onclick="setFilter(${JSON.stringify(c).replace(/"/g, '&quot;')})">`
-            + `<div class="brow"><span class="bname">${c === UNCAT ? '⚠ ' : ''}${esc(c)}</span><span>${yen(used)}${b ? `<span class="bud"> / ${yen(b)}</span>` : ''}</span></div>${meter}</div>`;
+            + `<div class="brow"><span class="bname">${c === UNCAT ? '⚠ ' : ''}${esc(c)}${off ? '<span class="offtag">予算外</span>' : ''}</span><span>${yen(used)}${b ? `<span class="bud"> / ${yen(b)}</span>` : ''}</span></div>${meter}</div>`;
         }).join('')
       : '<div class="empty">データなし</div>');
 
@@ -1188,6 +1198,9 @@
       searchData = r; searchBusy = false; render();
     }).withFailureHandler(() => { searchBusy = false; render(); }).searchEntries(KEY, q);
   }
+
+  // 予算外のカテゴリか
+  const isOff = c => (data.offBudget || []).includes(c);
 
   // ===== カテゴリの絞り込み =====
   const UNCAT = '未分類';
