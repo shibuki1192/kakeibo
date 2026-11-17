@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="86824486f4ea">
+<meta name="build" content="4de708fb7e0e">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -952,8 +952,8 @@
     const unit = data.custom ? '月度' : '月';
     const dueTxt = due.length ? '（' + due.map(x => Number(x.ym.slice(5, 7)) + unit + ' ' + yen(x.amount)).join('／') + '）' : '';
     document.getElementById('exclTotal').innerHTML =
-      `<div>確定前：${sum(pend)}を含む</div><div>カード払い：${yen(dueTotal)}を含む${dueTxt}</div>`
-      + `<div>予算外：${sum(counted.concat(pend).filter(i => isOff(i.category)))}を含む</div><div>集計外：${sum(excl)}を除く</div>`;
+      `<div>確定前：${sum(pend)} を含む</div><div>カード払い：${yen(dueTotal)} を含む${dueTxt}</div>`
+      + `<div>予算外：${sum(counted.concat(pend).filter(i => isOff(i.category)))} を含む</div><div>集計外：${sum(excl)} を除く</div>`;
 
     renderOutflow();
     renderIncome(inc);
@@ -1114,7 +1114,7 @@
     // 今月の支出と同じ形：合計（確定前を含む）＋確定前
     el.innerHTML = `<div class="label">今月の出金</div>`
       + `<div class="total">${yen(o.total + (o.pending || 0))}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)}を含む</div>`;
+      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)} を含む</div>`;
   }
 
   // ===== 今月の入金・今月の収支 =====
@@ -1125,7 +1125,7 @@
     const ic = document.getElementById('incomeCard'), bc = document.getElementById('balanceCard');
     ic.style.display = ''; bc.style.display = '';
     ic.innerHTML = `<div class="label">今月の入金</div><div class="total">${yen(conf + pend)}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(pend)}を含む</div>`;
+      + `<div class="label" style="margin-top:4px">確定前：${yen(pend)} を含む</div>`;
     const o = data.outflow || { total: 0, pending: 0 };
     const bal = conf + pend - (o.total + (o.pending || 0));   // 確定前を含む見込み
     const balConf = conf - o.total;                            // 確定済みだけ
@@ -1515,7 +1515,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '86824486f4ea';
+    const BUILD = '4de708fb7e0e';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
