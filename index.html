@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="cef5e710b397">
+<meta name="build" content="888600e89809">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -416,18 +416,48 @@
     excludeStores:{ title:'集計しない店名', ph:'例：モバイルSuica',        hint:'店名にこの文字が含まれるメールは「集計外」として取り込みます。Suicaのチャージなど、支出ではないものに使います。これから取り込む分に反映されます。' },
   };
 
-  function openSettings() {
+  // ===== 設定画面：前回の設定をすぐ表示し、裏で最新を取り直す =====
+  let setDirty = false, setReq = 0;
+  const EDIT_VIEWS = ['fixedEdit', 'payEdit', 'sruleEdit', 'period', 'budget']; // 入力欄がある画面
+  function fetchSettings(onDone) {
+    const seq = ++setReq;
     google.script.run.withSuccessHandler(s => {
-      S = s; stack = [{ v:'menu' }]; renderSet(); setDlg.showModal();
-    }).loadSettings(KEY);
+      if (seq !== setReq) return;
+      cacheSet('settings', s);
+      if (onDone) onDone(s);
+    }).withFailureHandler(() => {}).loadSettings(KEY);
   }
-  function closeSettings() { setDlg.close(); saving.then(load); }
+  function openSettings() {
+    setDirty = false;
+    stack = [{ v:'menu' }];
+    const cached = cacheGet('settings');
+    if (cached) {
+      S = cached; renderSet(); setDlg.showModal();          // 前回の設定ですぐ開く
+    } else {
+      S = null;
+      document.getElementById('setBack').textContent = '';
+      document.getElementById('setTitle').textContent = '設定';
+      document.getElementById('setBody').innerHTML = '<div class="empty">読み込み中…</div>';
+      setDlg.showModal();
+    }
+    fetchSettings(s => {
+      if (!setDlg.open || setDirty) return;                 // 閉じた・もう変更したなら差し替えない
+      if (S && JSON.stringify(s) === JSON.stringify(S)) return;
+      const v = stack[stack.length - 1];
+      if (S && EDIT_VIEWS.includes(v.v)) return;            // 入力中の画面は書き換えない
+      S = s; renderSet();
+    });
+  }
+  // 閉じたとき、設定を変えた場合だけ明細を読み込み直す
+  function closeSettings() { setDlg.close(); if (setDirty) saving.then(load); }
   function go(view) { stack.push(view); renderSet(); setDlg.scrollTop = 0; }
   function back() { stack.pop(); renderSet(); }
 
   // 変更のたびに順番に保存
   function persist() {
+    setDirty = true;
     const snap = JSON.parse(JSON.stringify(S));
+    cacheSet('settings', snap);
     saving = saving.then(() => new Promise(r =>
       google.script.run.withSuccessHandler(r).withFailureHandler(e => { alert('保存に失敗しました'); r(); }).saveSettings(KEY, snap)));
   }
@@ -859,7 +889,8 @@
   function resetSettings() {
     if (!confirm('設定を初期値に戻しますか？')) return;
     saving = saving.then(() => new Promise(r => google.script.run.withSuccessHandler(r).resetSettings(KEY)));
-    saving.then(() => google.script.run.withSuccessHandler(s => { S = s; stack = [{ v:'menu' }]; renderSet(); }).loadSettings(KEY));
+    setDirty = true;
+    saving.then(() => fetchSettings(s => { S = s; stack = [{ v:'menu' }]; renderSet(); }));
   }
 
   const SRC = { mail:'メール', fixed:'固定費', manual:'手入力' };
@@ -906,6 +937,8 @@
       : `${yy}年${mm}月`) + '<div class="prange" id="loadingTxt" style="display:none">更新中…</div>';
   }
   function applyData(d, isStale) {
+    // 最初に表示したあと、設定も裏で取っておく（設定画面をすぐ開けるように）
+    if (!applyData.prefetched) { applyData.prefetched = true; setTimeout(() => fetchSettings(), 2000); }
     data = d;
     const [yy, mm] = d.ym.split('-').map(Number);
     cur = new Date(yy, mm - 1, 1); curReady = true;
@@ -1515,7 +1548,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = 'cef5e710b397';
+    const BUILD = '888600e89809';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
