@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="21b7c62ccfaf">
+<meta name="build" content="86824486f4ea">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -209,6 +209,9 @@
   .cell.sr span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .cell.sr .c3 { color:var(--accent); font-size:13px; }
   .cell.sr .dim { color:var(--sub); }
+  .src.auto { background:rgba(10,132,255,.15); color:#0a84ff; }
+  .src.pay { background:transparent; color:var(--text); border:1px solid var(--line); padding:0 6px; }
+  .mtxt { margin-right:8px; }
   .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
   .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
   .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
@@ -949,8 +952,8 @@
     const unit = data.custom ? '月度' : '月';
     const dueTxt = due.length ? '（' + due.map(x => Number(x.ym.slice(5, 7)) + unit + ' ' + yen(x.amount)).join('／') + '）' : '';
     document.getElementById('exclTotal').innerHTML =
-      `<div>確定前：${sum(pend)}</div><div>カード払い：${yen(dueTotal)}${dueTxt}</div>`
-      + `<div>予算外：${sum(counted.concat(pend).filter(i => isOff(i.category)))}</div><div>集計外：${sum(excl)}</div>`;
+      `<div>確定前：${sum(pend)}を含む</div><div>カード払い：${yen(dueTotal)}を含む${dueTxt}</div>`
+      + `<div>予算外：${sum(counted.concat(pend).filter(i => isOff(i.category)))}を含む</div><div>集計外：${sum(excl)}を除く</div>`;
 
     renderOutflow();
     renderIncome(inc);
@@ -1010,14 +1013,14 @@
     const finfo2 = searching && !filterCat
       ? `<div class="finfo">${allMode() ? '全期間で' : ''}「${esc(searchQ())}」を含む明細 <b>${fsumTxt}</b>（${view.length}件）${searchBusy ? '・検索中…' : ''}</div>` : '';
     document.getElementById('list').innerHTML = (base.length || searching)
-      ? '<div class="listtop"><div class="legend">' + mailLegend() + '<span class="src fixed">固定費</span><span class="src manual">手入力</span><span class="src income">入金</span><span class="src transfer">振替</span><span class="src pend">確定前</span></div>'
+      ? '<div class="listtop"><div class="legend"><span class="src auto">自動</span><span class="src manual">手動</span><span class="src income">入金</span><span class="src transfer">振替</span><span class="src pend">確定前</span></div>'
         + (selMode ? '' : '<button onclick="startSelect()">☑ カテゴリ一括変更</button>') + '</div>'
         + chips + finfo + finfo2
         + view.map(({ i, k }, n) => dayHead(i, n, view) + `
         <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}${i.kind === 'transfer' ? ' transfer' : ''}" onclick="tapItem(${k})">
           ${selMode ? (i.pending ? '<span class="ck" style="visibility:hidden"></span>' : `<span class="ck${selected.has(i.row) ? ' on' : ''}">✓</span>`) : ''}
           <div><div class="store">${esc(i.store || '(店名なし)')}</div>${i.rawStore && i.rawStore !== i.store ? `<div class="orig">${esc(i.rawStore)}</div>` : ''}
-          <div class="meta"><span class="src ${i.kind === 'income' ? 'income' : i.kind === 'transfer' ? 'transfer' : i.source}">${i.kind === 'income' ? '入金' : i.kind === 'transfer' ? '振替' : srcLabel(i)}</span>${i.pending ? (i.overdue ? '<span class="src pend overdue">未着</span>' : '<span class="src pend">確定前</span>') : ''}${i.split ? '<span class="src split">分割</span>' : ''}${i.excluded && i.kind !== 'transfer' ? '<span class="src excl">集計外</span>' : ''}${i.kind === 'transfer' ? esc(methodName(i.method)) + ' → ' + esc(methodName(i.category)) : i.category === UNCAT ? '<span class="cat-uncat">⚠ 未分類</span>' : esc(i.category)}${i.source === 'mail' || i.kind !== 'expense' ? '' : methodTypeOf(i.method) === 'card' ? '・💳' + esc(methodName(i.method)) : ['cash', 'prepaid'].includes(methodTypeOf(i.method)) ? '・💴' + esc(methodName(i.method)) : ''}${i.memo && i.memo !== '固定費' ? '・' + esc(i.memo) : ''}</div></div>
+          <div class="meta">${metaHtml(i)}</div></div>
           <div class="amt">${i.kind === 'income' ? '+' : i.kind === 'transfer' ? '⇄ ' : ''}${yen(i.amount)}</div>
         </div>`).join('')
         + (view.length ? '' : `<div class="empty">${searchBusy ? '検索中…' : '該当する明細はありません'}</div>`)
@@ -1071,6 +1074,28 @@
   }
   const methodName = id => ((data.payMethods || []).find(m => m.id === id) || {}).name || '';
   // メールで取り込んだ明細のラベル＝支払方法のラベル（例：Y-Deb）
+  // 明細のタグ行：「自動／手動」「支払方法／入金」「カテゴリ」「メモ」「分割」の順
+  function metaHtml(i) {
+    const out = [];
+    out.push(i.source === 'manual' ? '<span class="src manual">手動</span>' : '<span class="src auto">自動</span>');
+    if (i.kind === 'income') out.push('<span class="src income">入金</span>');
+    else if (i.kind === 'transfer') out.push('<span class="src transfer">振替</span>');
+    else out.push(`<span class="src pay">${esc(methodShort(i.method))}</span>`);
+    if (i.kind === 'transfer') out.push(`<span class="mtxt">${esc(methodShort(i.method))} → ${esc(methodShort(i.category))}</span>`);
+    else if (i.category === UNCAT) out.push('<span class="mtxt cat-uncat">⚠ 未分類</span>');
+    else out.push(`<span class="mtxt">${esc(i.category)}</span>`);
+    if (i.memo && i.memo !== '固定費') out.push(`<span class="mtxt">${esc(i.memo)}</span>`);
+    if (i.split) out.push('<span class="src split">分割</span>');
+    if (i.pending) out.push(i.overdue ? '<span class="src pend overdue">未着</span>' : '<span class="src pend">確定前</span>');
+    if (i.excluded && i.kind !== 'transfer') out.push('<span class="src excl">集計外</span>');
+    return out.join('');
+  }
+  // 支払方法の短い名前（ラベル。なければ名前）
+  function methodShort(id) {
+    const m = (data.payMethods || []).find(x => x.id === id);
+    return m ? (m.short || m.name) : '';
+  }
+
   function srcLabel(i) {
     if (i.source !== 'mail') return SRC[i.source];
     const m = (data.payMethods || []).find(x => x.id === i.method);
@@ -1089,7 +1114,7 @@
     // 今月の支出と同じ形：合計（確定前を含む）＋確定前
     el.innerHTML = `<div class="label">今月の出金</div>`
       + `<div class="total">${yen(o.total + (o.pending || 0))}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)}</div>`;
+      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)}を含む</div>`;
   }
 
   // ===== 今月の入金・今月の収支 =====
@@ -1100,7 +1125,7 @@
     const ic = document.getElementById('incomeCard'), bc = document.getElementById('balanceCard');
     ic.style.display = ''; bc.style.display = '';
     ic.innerHTML = `<div class="label">今月の入金</div><div class="total">${yen(conf + pend)}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(pend)}</div>`;
+      + `<div class="label" style="margin-top:4px">確定前：${yen(pend)}を含む</div>`;
     const o = data.outflow || { total: 0, pending: 0 };
     const bal = conf + pend - (o.total + (o.pending || 0));   // 確定前を含む見込み
     const balConf = conf - o.total;                            // 確定済みだけ
@@ -1490,7 +1515,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '21b7c62ccfaf';
+    const BUILD = '86824486f4ea';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
