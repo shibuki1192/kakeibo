@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="888600e89809">
+<meta name="build" content="64301ab89743">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -212,6 +212,10 @@
   .src.auto { background:rgba(10,132,255,.15); color:#0a84ff; }
   .src.pay { background:transparent; color:var(--text); border:1px solid var(--line); padding:0 6px; }
   .mtxt { margin-right:8px; }
+  .srtools { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .srtools select { flex:1; min-width:0; font-size:15px; padding:8px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .srseg { margin:0; flex:none; }
+  .srseg button { padding:6px 10px; font-size:13px; white-space:nowrap; }
   .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
   .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
   .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
@@ -512,15 +516,35 @@
     } else if (v.v === 'srules') {
       title = '店名ルール';
       const q = normQ(srFilter);
-      const rows = S.storeRules.map((r, i) => ({ r, i })).filter(x => !q || [x.r.match, x.r.name, x.r.category].some(t => normQ(t).includes(q)));
-      html = `<input type="search" placeholder="🔍 ルールを探す" value="${esc(srFilter)}" id="srQ" oninput="onSrFilter(this.value)" style="width:100%;font-size:16px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);margin-bottom:10px;-webkit-appearance:none">`
+      // カテゴリの順番：設定のカテゴリ順 → それ以外 → カテゴリなし
+      const catOrder = [...new Set(S.categories.concat(S.storeRules.map(r => r.category).filter(Boolean)))];
+      const cidx = c => c ? (catOrder.indexOf(c) + 1 || 9999) : 99999;
+      let rows = S.storeRules.map((r, i) => ({ r, i }))
+        .filter(x => !srCat || (srCat === NOCAT ? !x.r.category : x.r.category === srCat))
+        .filter(x => !q || [x.r.match, x.r.name, x.r.category].some(t => normQ(t).includes(q)));
+      if (srSort === 'cat') {
+        const ja = (a, b) => a.localeCompare(b, 'ja');
+        rows = rows.slice().sort((A, B) => cidx(A.r.category) - cidx(B.r.category)
+          || (!A.r.name - !B.r.name) || ja(A.r.name, B.r.name)       // 表示する店名（「そのまま」は後ろ）
+          || ja(A.r.match, B.r.match));
+      }
+      const canDrag = srSort === 'prio' && !q && !srCat;
+      const cnt = c => S.storeRules.filter(r => (c === NOCAT ? !r.category : r.category === c)).length;
+      const catOpts = catOrder.filter(c => cnt(c)).map(c => `<option value="${esc(c)}"${c === srCat ? ' selected' : ''}>${esc(c)}（${cnt(c)}）</option>`).join('')
+        + (cnt(NOCAT) ? `<option value="${NOCAT}"${srCat === NOCAT ? ' selected' : ''}>カテゴリなし（${cnt(NOCAT)}）</option>` : '');
+      html = `<input type="search" placeholder="🔍 ルールを探す" value="${esc(srFilter)}" id="srQ" oninput="onSrFilter(this.value)" style="width:100%;font-size:16px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);margin-bottom:8px;-webkit-appearance:none">`
+        + `<div class="srtools"><select onchange="srCat=this.value;renderSet()"><option value="">すべて（${S.storeRules.length}）</option>${catOpts}</select>`
+        + `<div class="seg srseg"><button class="${srSort === 'cat' ? 'on' : ''}" onclick="setSrSort('cat')">カテゴリ順</button><button class="${srSort === 'prio' ? 'on' : ''}" onclick="setSrSort('prio')">優先順</button></div></div>`
         + `<div class="srhead"><span>元の店名</span><span>表示する店名</span><span>カテゴリ</span></div>`
         + (rows.length ? group(rows.map(({ r, i }) =>
-            `<div class="cell link sr" onclick="go({v:'sruleEdit',i:${i}})">${q ? '<span></span>' : grip}<span class="c1">${esc(r.match)}</span><span class="c2">${r.name ? esc(r.name) : '<span class="dim">そのまま</span>'}</span><span class="c3">${r.category ? esc(r.category) : '<span class="dim">―</span>'}</span></div>`), q ? '' : 'moveSRule')
-          : group(['<div class="cell" style="color:var(--sub)">' + (q ? '見つかりません' : 'まだありません') + '</div>']))
+            `<div class="cell link sr" onclick="go({v:'sruleEdit',i:${i}})">${canDrag ? grip : '<span></span>'}<span class="c1">${esc(r.match)}</span><span class="c2">${r.name ? esc(r.name) : '<span class="dim">そのまま</span>'}</span><span class="c3">${r.category ? esc(r.category) : '<span class="dim">―</span>'}</span></div>`), canDrag ? 'moveSRule' : '')
+          : group(['<div class="cell" style="color:var(--sub)">' + (q || srCat ? '見つかりません' : 'まだありません') + '</div>']))
         + group(['<div class="cell link" style="color:var(--accent);justify-content:center" onclick="go({v:\'sruleEdit\',i:-1})">＋ ルールを追加</div>'])
         + group(['<div class="cell link" style="color:var(--accent);justify-content:center" onclick="applyRulesNow()">未分類の明細に今のルールを当てはめる</div>'])
-        + hint('上にあるルールが優先です（≡ で並び替え）。<br>・<b>表示する店名</b>：一覧での表示を変えます。過去の明細にも反映されます。<br>・<b>カテゴリ</b>：メールを取り込むときに付けます。過去の分は「未分類の明細に今のルールを当てはめる」で付けられます。');
+        + hint((srSort === 'cat'
+            ? '「カテゴリ順」は見やすくするための並びで、当てはめる優先順位は変わりません。優先順位を変えるときは「優先順」にして ≡ で並び替えます（絞り込み中は並び替えできません）。'
+            : '上にあるルールが優先です（≡ で並び替え。絞り込み中は並び替えできません）。')
+          + '<br>・<b>表示する店名</b>：一覧での表示を変えます。過去の明細にも反映されます。<br>・<b>カテゴリ</b>：メールを取り込むときに付けます。過去の分は「未分類の明細に今のルールを当てはめる」で付けられます。');
     } else if (v.v === 'sruleEdit') {
       const r = v.i >= 0 ? S.storeRules[v.i] : { match: '', name: '', category: '' };
       title = v.i >= 0 ? 'ルールを編集' : 'ルールを追加';
@@ -697,7 +721,10 @@
   }
 
   // ===== 店名ルール =====
-  let srFilter = '';
+  let srFilter = '', srCat = '';
+  const NOCAT = '__none__';
+  let srSort = cacheGet('srSort') === 'prio' ? 'prio' : 'cat'; // 表示の並び（前回の選択を覚えておく）
+  function setSrSort(v) { srSort = v; cacheSet('srSort', v); renderSet(); }
   function onSrFilter(val) {
     srFilter = val; renderSet();
     const el = document.getElementById('srQ');
@@ -1548,7 +1575,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '888600e89809';
+    const BUILD = '64301ab89743';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
