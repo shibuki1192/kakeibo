@@ -1,4 +1,4 @@
-const CACHE = 'kakeibo-v8';
+const CACHE = 'kakeibo-v9';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))));
@@ -14,22 +14,24 @@ self.addEventListener('activate', e => {
     cs.forEach(c => c.navigate(c.url).catch(() => {}));
   })());
 });
-const timeout = (ms) => new Promise((_, ng) => setTimeout(() => ng(new Error('timeout')), ms));
 self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
+  if (isPage && url.searchParams.has('fresh')) {
+    // 更新の確認：必ずネットから取り、取れたら保存し直す
+    e.respondWith((async () => {
+      const r = await fetch(url.pathname, { cache: 'no-store' });
+      if (r.ok) (await caches.open(CACHE)).put('./index.html', r.clone());
+      return r;
+    })());
+    return;
+  }
   if (isPage) {
     e.respondWith((async () => {
       const c = await caches.open(CACHE);
-      try {
-        const r = await Promise.race([fetch(req, { cache: 'no-store' }), timeout(4000)]);
-        if (r.ok) c.put('./index.html', r.clone());
-        return r;
-      } catch (_) {
-        return (await c.match('./index.html')) || (await c.match(req, { ignoreSearch: true })) || Response.error();
-      }
+      return (await c.match('./index.html')) || fetch(req, { cache: 'no-store' });
     })());
     return;
   }

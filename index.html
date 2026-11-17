@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="build" content="21b7c62ccfaf">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1488,6 +1489,23 @@
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+    // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
+    const BUILD = '21b7c62ccfaf';
+    const checkUpdate = async () => {
+      if (!navigator.serviceWorker.controller) return;
+      try {
+        const r = await fetch('index.html?fresh=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) return;
+        const m = /<meta name="build" content="([^"]+)"/.exec(await r.text());
+        if (!m || m[1] === BUILD) return;
+        // 新しい版を保存できた。入力中でなければ、その場で1回だけ開き直す（入力中なら次に開いたとき）
+        let done = ''; try { done = sessionStorage.getItem('kakeibo:reloaded'); } catch (_) {}
+        if (done === m[1] || document.querySelector('dialog[open]')) return;
+        try { sessionStorage.setItem('kakeibo:reloaded', m[1]); } catch (_) { return; }
+        location.reload();
+      } catch (_) {}
+    };
+    setTimeout(checkUpdate, 1500);
   }
 </script>
 </body>
