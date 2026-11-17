@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="4de708fb7e0e">
+<meta name="build" content="cef5e710b397">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1018,7 +1018,7 @@
         + chips + finfo + finfo2
         + view.map(({ i, k }, n) => dayHead(i, n, view) + `
         <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}${i.kind === 'transfer' ? ' transfer' : ''}" onclick="tapItem(${k})">
-          ${selMode ? (i.pending ? '<span class="ck" style="visibility:hidden"></span>' : `<span class="ck${selected.has(i.row) ? ' on' : ''}">✓</span>`) : ''}
+          ${selMode ? (i.pending ? '<span class="ck" style="visibility:hidden"></span>' : `<span class="ck${selected.has(i.id) ? ' on' : ''}">✓</span>`) : ''}
           <div><div class="store">${esc(i.store || '(店名なし)')}</div>${i.rawStore && i.rawStore !== i.store ? `<div class="orig">${esc(i.rawStore)}</div>` : ''}
           <div class="meta">${metaHtml(i)}</div></div>
           <div class="amt">${i.kind === 'income' ? '+' : i.kind === 'transfer' ? '⇄ ' : ''}${yen(i.amount)}</div>
@@ -1309,7 +1309,7 @@
     const i = baseItems()[k];
     if (!selMode) return openEdit(k);
     if (i.pending || i.kind === 'transfer') return;
-    selected.has(i.row) ? selected.delete(i.row) : selected.add(i.row);
+    selected.has(i.id) ? selected.delete(i.id) : selected.add(i.id);
     render(); updateSelBar();
   }
   function startSelect() {
@@ -1326,7 +1326,7 @@
     render();
   }
   function selectAll() {
-    const rows = visibleItems().map(x => x.i).filter(i => !i.pending && i.kind !== 'transfer').map(i => i.row);
+    const rows = visibleItems().map(x => x.i).filter(i => !i.pending && i.kind !== 'transfer').map(i => i.id);
     const all = rows.every(r => selected.has(r));
     rows.forEach(r => all ? selected.delete(r) : selected.add(r));
     render(); updateSelBar();
@@ -1410,7 +1410,7 @@
       alert('金額を入力してください'); return;
     }
     if (editing) {
-      const args = [editing.row, cat, memo, excluded, customName(),
+      const args = [editing.id, cat, memo, excluded, customName(),
         editing.source === 'manual' ? document.getElementById('fEditDate').value : '',
         amtEditable ? parseMoney(document.getElementById('fEditAmount').value) : 0,
         addKind === 'income' ? editing.method : document.getElementById('fMethod').value,
@@ -1478,12 +1478,12 @@
     if (parts.slice(1).some(p => !(p.amount > 0))) { alert('金額を入力してください（空の行は「−」で削除できます）'); return; }
     if (!(parts[0].amount > 0)) { alert('分割した金額の合計が、元の金額を超えています'); return; }
     spDlg.close();
-    act('splitEntry', [editing.row, parts]);
+    act('splitEntry', [editing.id, parts]);
   }
   function unsplit() {
     if (!confirm('分割した明細を1つにまとめますか？')) return;
     dlg.close();
-    act('unsplitEntry', [editing.row]);
+    act('unsplitEntry', [editing.id]);
   }
 
   // 置き換え後の名前と同じなら「変更なし」として保存
@@ -1496,7 +1496,7 @@
   function del() {
     if (!editing || !confirm('削除しますか？')) return;
     dlg.close();
-    act('deleteEntry', [editing.row]);
+    act('deleteEntry', [editing.id]);
   }
 
   function sync() {
@@ -1515,7 +1515,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '4de708fb7e0e';
+    const BUILD = 'cef5e710b397';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
