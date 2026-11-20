@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="12df019b188e">
+<meta name="build" content="0eeab983b513">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -177,6 +177,7 @@
   .budhead.over b, .budhead.over .label { color:#ff3b30; }
   body.stale #list, body.stale #byCat, body.stale #outflow { opacity:.6; transition:opacity .2s; }
   #loadingTxt { color:var(--accent); }
+  .month .prange.today { color:var(--accent); cursor:pointer; margin-top:2px; }
   .src.income { background:rgba(48,176,199,.18); color:#1a8aa0; }
   .item.income { border-left-color:#30b0c7; }
   .item.income .amt { color:#248a3d; }
@@ -992,7 +993,19 @@
     const fmt = t => Number(t.slice(5, 7)) + '/' + Number(t.slice(8, 10));
     document.getElementById('month').innerHTML = (d.custom
       ? `${yy}年${mm}月度<div class="prange">${fmt(d.period.start)}〜${fmt(d.period.end)}</div>`
-      : `${yy}年${mm}月`) + '<div class="prange" id="loadingTxt" style="display:none">更新中…</div>';
+      : `${yy}年${mm}月`) + todayHtml() + '<div class="prange" id="loadingTxt" style="display:none">更新中…</div>';
+  }
+  // 今日の日付（どの月を見ていても今日のまま。タップで今日を含む月に戻る）
+  function todayHtml() {
+    const t = new Date();
+    return `<div class="prange today" onclick="goToday()">今日：${t.getFullYear()}/${t.getMonth() + 1}/${t.getDate()}（${WD[t.getDay()]}）</div>`;
+  }
+  function goToday() {
+    if (selMode) endSelect();
+    curReady = false; // 今日を含む月度をサーバーに決めてもらう
+    selected.clear();
+    load();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   function applyData(d, isStale) {
     // 最初に表示したあと、設定も裏で取っておく（設定画面をすぐ開けるように）
@@ -1012,7 +1025,7 @@
       setStale(true);                          // 同じ月なら今の表示のまま更新
     } else {
       const [yy, mm] = req === 'current' ? [cur.getFullYear(), cur.getMonth() + 1] : req.split('-').map(Number);
-      document.getElementById('month').innerHTML = `${yy}年${mm}月${data.custom ? '度' : ''}<div class="prange" id="loadingTxt">読み込み中…</div>`;
+      document.getElementById('month').innerHTML = `${yy}年${mm}月${data.custom ? '度' : ''}${todayHtml()}<div class="prange" id="loadingTxt">読み込み中…</div>`;
       document.getElementById('list').innerHTML = '<div class="empty">読み込み中…</div>';
       setStale(true);
     }
@@ -1698,7 +1711,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '12df019b188e';
+    const BUILD = '0eeab983b513';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
