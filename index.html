@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="278692af4ffc">
+<meta name="build" content="f5d58c024ffa">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -212,7 +212,7 @@
   .cell.sr .dim { color:var(--sub); }
   .src.auto { background:rgba(10,132,255,.15); color:#0a84ff; }
   .src.pay { background:transparent; color:var(--text); border:1px solid var(--line); padding:0 6px; }
-  .mtxt { margin-right:8px; }
+  .mtxt { margin-right:8px; display:inline-block; }
   .srtools { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
   .srtools select { flex:1; min-width:0; font-size:15px; padding:8px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
   .srseg { margin:0; flex:none; }
@@ -1203,7 +1203,8 @@
     if (i.kind === 'cardpay') {
       const md = t => Number(t.slice(5, 7)) + '/' + Number(t.slice(8, 10));
       out.push('<span class="src auto">自動</span><span class="src cardpay">引落</span>');
-      out.push(`<span class="src pay">${esc(methodShort(i.method))}</span>`);
+      // 振替と同じ形：引き落とされる口座 → カード
+      out.push(`<span class="mtxt">${esc(methodShort(defaultMethodId('fixed')))} → ${esc(methodShort(i.method))}</span>`);
       out.push(`<span class="mtxt">${md(i.from)}〜${md(i.to)}利用分</span>`);
       if (i.date > todayStr()) out.push('<span class="src pend">引落前</span>');
       if (!i.closed) out.push('<span class="src pend">締め前</span>');
@@ -1715,7 +1716,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '278692af4ffc';
+    const BUILD = 'f5d58c024ffa';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
