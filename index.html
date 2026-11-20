@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="0eeab983b513">
+<meta name="build" content="278692af4ffc">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -681,7 +681,7 @@
           <label class="label">締め日</label><select id="pmClose">${dayOpts(pm.closeDay, '末日')}</select>
           <label class="label">支払日</label>
           <div class="row" style="margin-bottom:0">
-            <select id="pmOffset" style="flex:1"><option value="1"${pm.payOffset == 1 ? ' selected' : ''}>翌月</option><option value="2"${pm.payOffset == 2 ? ' selected' : ''}>翌々月</option></select>
+            <select id="pmOffset" style="flex:1"><option value="0"${pm.payOffset == 0 ? ' selected' : ''}>当月（締め日と同じ月）</option><option value="1"${pm.payOffset == 1 ? ' selected' : ''}>翌月</option><option value="2"${pm.payOffset == 2 ? ' selected' : ''}>翌々月</option></select>
             <select id="pmPay" style="flex:1">${dayOpts(pm.payDay, '末日')}</select>
           </div>
           <label class="label">支払日が土日・祝日の場合</label>
@@ -904,13 +904,17 @@
     if (pm.type === 'prepaid') return 'チャージ式（今月の出金に含めない）';
     if (pm.type === 'instant') return '即時' + (pm.senders && pm.senders.length ? '・📧' + esc(pm.senders.join(', ')) : '');
     const d = n => n === 31 ? '末日' : n + '日';
-    return `${d(pm.closeDay)}締め・${pm.payOffset == 2 ? '翌々月' : '翌月'}${d(pm.payDay)}払い${SHIFT_SHORT[pm.shift] || ''}`
+    return `${d(pm.closeDay)}締め・${pm.payOffset == 2 ? '翌々月' : pm.payOffset == 0 ? '当月' : '翌月'}${d(pm.payDay)}払い${SHIFT_SHORT[pm.shift] || ''}`
       + (pm.senders && pm.senders.length ? '・📧' + esc(pm.senders.join(', ')) : '');
   }
   function savePay() {
     const v = stack[stack.length - 1];
     const name = document.getElementById('pmName').value.trim();
     if (!name) { alert('名前を入力してください'); return; }
+    if (document.getElementById('pmType').value === 'card' && document.getElementById('pmOffset').value === '0'
+        && Number(document.getElementById('pmPay').value) <= Number(document.getElementById('pmClose').value)) {
+      alert('「当月」払いのときは、支払日を締め日より後の日にしてください'); return;
+    }
     const data = {
       name, type: document.getElementById('pmType').value,
       short: document.getElementById('pmShort').value.trim() || name,
@@ -1711,7 +1715,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '0eeab983b513';
+    const BUILD = '278692af4ffc';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
