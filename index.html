@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="64301ab89743">
+<meta name="build" content="12df019b188e">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -216,6 +216,28 @@
   .srtools select { flex:1; min-width:0; font-size:15px; padding:8px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
   .srseg { margin:0; flex:none; }
   .srseg button { padding:6px 10px; font-size:13px; white-space:nowrap; }
+  .chiplabel { flex:none; align-self:center; font-size:11px; color:var(--sub); margin:0 2px 0 4px; }
+  .chip.pm.on { background:var(--text); border-color:var(--text); color:var(--bg); }
+  .chip.pm.on .n { color:var(--bg); opacity:.7; }
+  #outflow { cursor:pointer; }
+  .of-toggle { color:var(--accent) !important; margin-top:6px; }
+  .of-row { display:flex; justify-content:space-between; gap:8px; font-size:14px; padding:7px 0; border-top:1px solid var(--line); }
+  .of-row .sub { font-size:11px; color:var(--sub); }
+  .of-row.link { cursor:pointer; }
+  .of-row.link .sub { color:var(--accent); }
+  .of-row.strong { font-weight:700; }
+  .of-note { font-size:11px; color:var(--sub); margin-top:6px; }
+  .tag-open { font-size:10px; border:1px dashed var(--sub); color:var(--sub); border-radius:6px; padding:0 5px; margin-left:4px; }
+  .src.cardpay { background:rgba(255,159,10,.16); color:#c76a00; }
+  @media (prefers-color-scheme: dark) { .src.cardpay { color:#ffb340; } }
+  .item.cardpay { border-left-color:#ff9f0a; border-left-style:dashed; }
+  .item.cardpay .amt { color:var(--sub); }
+  #cdDlg { max-height:85vh; overflow-y:auto; }
+  .cdlist { margin:8px 0; }
+  .cd-row { display:flex; gap:8px; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .cd-row .d { flex:none; width:40px; color:var(--sub); }
+  .cd-row .n { flex:1; min-width:0; }
+  .cd-row .a { flex:none; font-weight:600; }
   .setup { position:fixed; inset:0; z-index:100; background:var(--bg); align-items:center; justify-content:center; padding:24px; }
   .setup-box { background:var(--card); border-radius:16px; padding:20px; width:min(100%, 420px); }
   .setup-box input { width:100%; font-size:16px; padding:10px; margin:12px 0; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
@@ -250,6 +272,7 @@
     <div class="card" id="incomeCard" style="display:none"></div>
     <div class="card" id="outflow" style="display:none"></div>
   </div>
+  <div class="card" id="outflowDetail" style="display:none"></div>
   <div class="pair">
     <div class="card" id="bankCard" style="display:none"></div>
     <div class="card" id="cashCard" style="display:none"></div>
@@ -326,6 +349,14 @@
       <button class="secondary" onclick="bkDlg.close()">閉じる</button>
       <button class="primary" onclick="saveBank()">保存</button>
     </div>
+  </dialog>
+
+  <dialog id="cdDlg">
+    <div id="cdTitle" tabindex="-1" autofocus style="font-weight:600;font-size:17px;margin-bottom:4px;outline:none"></div>
+    <div class="hint" id="cdInfo"></div>
+    <div id="cdList" class="cdlist"></div>
+    <div class="hint">この引き落としの金額は、家計簿に記録したカード払いの合計です。明細を追加・変更すると自動で更新されます。</div>
+    <div class="row"><button class="secondary" onclick="cdDlg.close()">閉じる</button></div>
   </dialog>
 
   <dialog id="cfDlg">
@@ -966,6 +997,7 @@
   function applyData(d, isStale) {
     // 最初に表示したあと、設定も裏で取っておく（設定画面をすぐ開けるように）
     if (!applyData.prefetched) { applyData.prefetched = true; setTimeout(() => fetchSettings(), 2000); }
+    addCardRows(d);
     data = d;
     const [yy, mm] = d.ym.split('-').map(Number);
     cur = new Date(yy, mm - 1, 1); curReady = true;
@@ -1056,32 +1088,45 @@
     // カテゴリの絞り込み
     const base = baseItems();
     if (filterCat && !base.some(i => i.category === filterCat)) filterCat = '';
+    if (filterMethod && !base.some(i => matchMethod(i, filterMethod))) filterMethod = '';
     const view = visibleItems();
-    const present = [...new Set(base.filter(i => i.kind !== 'transfer').map(i => i.category))]
+    // 件数は、もう一方の絞り込みをかけた状態で数える
+    const baseM = base.filter(i => !filterMethod || matchMethod(i, filterMethod));
+    const baseC = base.filter(i => !filterCat || i.category === filterCat);
+    const present = [...new Set(base.filter(i => i.kind !== 'transfer' && i.kind !== 'cardpay').map(i => i.category))]
       .sort((a, b) => (a === UNCAT ? -1 : b === UNCAT ? 1 : data.categories.indexOf(a) - data.categories.indexOf(b)));
-    const chip = (c, label, n) => `<button class="chip${c === filterCat ? ' on' : ''}${c === UNCAT ? ' uncat' : ''}" onclick="setFilter(${JSON.stringify(c).replace(/"/g, '&quot;')})">${label}<span class="n">${n}</span></button>`;
+    const jsArg = v => JSON.stringify(v).replace(/"/g, '&quot;');
+    const chip = (c, label, n) => `<button class="chip${c === filterCat ? ' on' : ''}${c === UNCAT ? ' uncat' : ''}" onclick="setFilter(${jsArg(c)})">${label}<span class="n">${n}</span></button>`;
     const chips = base.length
-      ? '<div class="chips">' + chip('', 'すべて', base.length)
-        + present.map(c => chip(c, (c === UNCAT ? '⚠ ' : '') + esc(c), base.filter(i => i.category === c).length)).join('') + '</div>'
+      ? '<div class="chips">' + chip('', 'すべて', baseM.length)
+        + present.map(c => chip(c, (c === UNCAT ? '⚠ ' : '') + esc(c), baseM.filter(i => i.category === c).length)).join('') + '</div>'
+      : '';
+    // 支払方法の絞り込み（その月に使われているものだけ）
+    const mchip = (m, label, n) => `<button class="chip pm${m === filterMethod ? ' on' : ''}" onclick="setMethodFilter(${jsArg(m)})">${label}<span class="n">${n}</span></button>`;
+    const usedMethods = (data.payMethods || []).filter(m => base.some(i => matchMethod(i, m.id)));
+    const mchips = usedMethods.length > 1 || filterMethod
+      ? '<div class="chips"><span class="chiplabel">支払方法</span>' + mchip('', 'すべて', baseC.length)
+        + usedMethods.map(m => mchip(m.id, esc(m.short || m.name), baseC.filter(i => matchMethod(i, m.id)).length)).join('') + '</div>'
       : '';
     const fexp = view.filter(x => x.i.kind === 'expense' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
     const finc = view.filter(x => x.i.kind === 'income' && !x.i.excluded && !x.i.pending).reduce((a, x) => a + x.i.amount, 0);
     const fsumTxt = (fexp || !finc ? yen(fexp) : '') + (finc ? `${fexp ? '・' : ''}<span class="dinc">入金 +${yen(finc)}</span>` : '');
-    const finfo = filterCat ? `<div class="finfo">「${esc(filterCat)}」の合計 <b>${fsumTxt}</b>（${view.length}件）<button onclick="setFilter('')">解除</button></div>` : '';
+    const fLabel = [filterCat, filterMethod && methodShort(filterMethod)].filter(Boolean).map(t => '「' + esc(t) + '」').join('×');
+    const finfo = fLabel ? `<div class="finfo">${fLabel}の合計 <b>${fsumTxt}</b>（${view.length}件）<button onclick="clearFilters()">解除</button></div>` : '';
 
     const searching = !!searchQ();
-    const finfo2 = searching && !filterCat
+    const finfo2 = searching && !fLabel
       ? `<div class="finfo">${allMode() ? '全期間で' : ''}「${esc(searchQ())}」を含む明細 <b>${fsumTxt}</b>（${view.length}件）${searchBusy ? '・検索中…' : ''}</div>` : '';
     document.getElementById('list').innerHTML = (base.length || searching)
-      ? '<div class="listtop"><div class="legend"><span class="src auto">自動</span><span class="src manual">手動</span><span class="src income">入金</span><span class="src transfer">振替</span><span class="src pend">確定前</span></div>'
+      ? '<div class="listtop"><div class="legend"><span class="src auto">自動</span><span class="src manual">手動</span><span class="src income">入金</span><span class="src transfer">振替</span><span class="src cardpay">引落</span><span class="src pend">確定前</span></div>'
         + (selMode ? '' : '<button onclick="startSelect()">☑ カテゴリ一括変更</button>') + '</div>'
-        + chips + finfo + finfo2
+        + chips + mchips + finfo + finfo2
         + view.map(({ i, k }, n) => dayHead(i, n, view) + `
-        <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}${i.kind === 'transfer' ? ' transfer' : ''}" onclick="tapItem(${k})">
+        <div class="item ${i.source}${i.excluded ? ' excl' : ''}${i.pending ? ' pending' : ''}${i.overdue ? ' overdue' : ''}${i.category === UNCAT ? ' uncat' : ''}${i.kind === 'income' ? ' income' : ''}${i.kind === 'transfer' ? ' transfer' : ''}${i.kind === 'cardpay' ? ' cardpay' : ''}" onclick="tapItem(${k})">
           ${selMode ? (i.pending ? '<span class="ck" style="visibility:hidden"></span>' : `<span class="ck${selected.has(i.id) ? ' on' : ''}">✓</span>`) : ''}
           <div><div class="store">${esc(i.store || '(店名なし)')}</div>${i.rawStore && i.rawStore !== i.store ? `<div class="orig">${esc(i.rawStore)}</div>` : ''}
           <div class="meta">${metaHtml(i)}</div></div>
-          <div class="amt">${i.kind === 'income' ? '+' : i.kind === 'transfer' ? '⇄ ' : ''}${yen(i.amount)}</div>
+          <div class="amt">${i.kind === 'income' ? '+' : i.kind === 'transfer' || i.kind === 'cardpay' ? '⇄ ' : ''}${yen(i.amount)}</div>
         </div>`).join('')
         + (view.length ? '' : `<div class="empty">${searchBusy ? '検索中…' : '該当する明細はありません'}</div>`)
       : '<div class="empty">この月の明細はありません</div>';
@@ -1096,12 +1141,13 @@
     const total = same.filter(x => x.kind === 'expense' && !x.excluded && !x.pending).reduce((a, x) => a + x.amount, 0);
     const pend = same.filter(x => x.kind === 'expense' && x.pending).reduce((a, x) => a + x.amount, 0);
     const inc = same.filter(x => x.kind === 'income' && !x.excluded).reduce((a, x) => a + x.amount, 0);
+    const cpay = same.filter(x => x.kind === 'cardpay').reduce((a, x) => a + x.amount, 0);
     const [y, m, d] = i.date.split('-').map(Number);
     const wd = new Date(y, m - 1, d).getDay();
     const cls = wd === 0 ? 'sun' : wd === 6 ? 'sat' : '';
     const add = selMode ? '' : `<button class="dayadd" onclick="openAdd('${i.date}')" aria-label="この日に追加">＋</button>`;
     return `<div class="day"><span class="dt ${cls}">${allMode() ? y + '/' : ''}${m}/${d}（${WD[wd]}）${add}</span>`
-      + `<span>${inc ? `<span class="dsub dinc">入金 +${yen(inc)}</span>` : ''}${pend ? `<span class="dsub">確定前 ${yen(pend)}</span>` : ''}<span class="dsum">${total || (!pend && !inc) ? yen(total) : ''}</span></span></div>`;
+      + `<span>${inc ? `<span class="dsub dinc">入金 +${yen(inc)}</span>` : ''}${cpay ? `<span class="dsub">引落 ${yen(cpay)}</span>` : ''}${pend ? `<span class="dsub">確定前 ${yen(pend)}</span>` : ''}<span class="dsum">${total || (!pend && !inc && !cpay) ? yen(total) : ''}</span></span></div>`;
   }
 
   // ===== 金額入力（3桁ごとにカンマ） =====
@@ -1137,6 +1183,15 @@
   // 明細のタグ行：「自動／手動」「支払方法／入金」「カテゴリ」「メモ」「分割」の順
   function metaHtml(i) {
     const out = [];
+    if (i.kind === 'cardpay') {
+      const md = t => Number(t.slice(5, 7)) + '/' + Number(t.slice(8, 10));
+      out.push('<span class="src auto">自動</span><span class="src cardpay">引落</span>');
+      out.push(`<span class="src pay">${esc(methodShort(i.method))}</span>`);
+      out.push(`<span class="mtxt">${md(i.from)}〜${md(i.to)}利用分</span>`);
+      if (i.date > todayStr()) out.push('<span class="src pend">引落前</span>');
+      if (!i.closed) out.push('<span class="src pend">締め前</span>');
+      return out.join('');
+    }
     out.push(i.source === 'manual' ? '<span class="src manual">手動</span>' : '<span class="src auto">自動</span>');
     if (i.kind === 'income') out.push('<span class="src income">入金</span>');
     else if (i.kind === 'transfer') out.push('<span class="src transfer">振替</span>');
@@ -1174,7 +1229,60 @@
     // 今月の支出と同じ形：合計（確定前を含む）＋確定前
     el.innerHTML = `<div class="label">今月の出金</div>`
       + `<div class="total">${yen(o.total + (o.pending || 0))}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)} を含む</div>`;
+      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)} を含む</div>`
+      + `<div class="label of-toggle">${outflowOpen ? '▲ 内訳を閉じる' : '▼ タップで内訳'}</div>`;
+    el.onclick = () => { outflowOpen = !outflowOpen; cacheSet('outflowOpen', outflowOpen); renderOutflow(); };
+    // 内訳（下に全幅で表示）
+    const dt = document.getElementById('outflowDetail');
+    if (!outflowOpen) { dt.style.display = 'none'; return; }
+    dt.style.display = '';
+    const md = t => Number(t.slice(5, 7)) + '/' + Number(t.slice(8, 10));
+    const today = todayStr();
+    const instantNames = (data.payMethods || []).filter(m => m.type === 'instant').map(m => m.name).join('・') || '口座';
+    const cashNames = (data.payMethods || []).filter(m => m.type === 'cash').map(m => m.name).join('・') || '現金';
+    dt.innerHTML = `<div class="label" style="margin-bottom:4px">今月の出金の内訳</div>`
+      + `<div class="of-row"><span>${esc(instantNames)}<div class="sub">使った日に口座から</div></span><span>${yen(o.instant)}</span></div>`
+      + `<div class="of-row"><span>${esc(cashNames)}<div class="sub">使った日に手元から</div></span><span>${yen(o.cash)}</span></div>`
+      + o.cards.map(c => `<div class="of-row link" onclick="openCardEntries(${jsq(c.method)}, ${jsq(c.from)}, ${jsq(c.to)}, ${jsq(c.name)}, ${jsq(c.payDate)})">`
+          + `<span>${esc(c.name)} ${md(c.payDate)}払い${c.payDate > today ? '<span class="tag-open">引落前</span>' : ''}${c.closed ? '' : '<span class="tag-open">締め前</span>'}`
+          + `<div class="sub">${md(c.from)}〜${md(c.to)}利用分 ›</div></span><span>${yen(c.amount)}</span></div>`).join('')
+      + (o.pending ? `<div class="of-row"><span>確定前（固定費など）<div class="sub">まだ確定していない予定</div></span><span>${yen(o.pending)}</span></div>` : '')
+      + `<div class="of-row strong"><span>合計</span><span>${yen(o.total + (o.pending || 0))}</span></div>`
+      + '<div class="of-note">au Payなどチャージ式で払った分は、チャージしたときに出金に入るので含みません。</div>';
+  }
+  let outflowOpen = cacheGet('outflowOpen') === true;
+  const jsq = v => JSON.stringify(String(v)).replace(/"/g, '&quot;');
+
+  // ===== カードの引き落とし =====
+  // 明細一覧に「引き落とし」の行を加える（シートには書かず、表示だけ。金額は記録したカード払いの合計で、随時更新）
+  function addCardRows(d) {
+    const items = (d.items || []).filter(i => i.kind !== 'cardpay');
+    ((d.outflow && d.outflow.cards) || []).forEach(c => {
+      if (!c.amount && c.closed) return; // 使っていない月は出さない
+      const it = { kind: 'cardpay', id: 'cardpay:' + c.method + ':' + c.payDate, row: 0, date: c.payDate, amount: c.amount,
+        store: c.name + ' 引き落とし', rawStore: '', aliasStore: '', category: '', memo: '', source: 'auto',
+        method: c.method, from: c.from, to: c.to, closed: c.closed, excluded: false, pending: false };
+      const idx = items.findIndex(x => x.date <= c.payDate);
+      items.splice(idx < 0 ? items.length : idx, 0, it);
+    });
+    d.items = items;
+  }
+  const cdDlg = document.getElementById('cdDlg');
+  function openCardEntries(method, from, to, name, payDate) {
+    if (stale) return;
+    const md = t => Number(t.slice(5, 7)) + '/' + Number(t.slice(8, 10));
+    document.getElementById('cdTitle').textContent = `${name} ${md(payDate)}払い`;
+    document.getElementById('cdInfo').textContent = `${md(from)}〜${md(to)}の利用分`;
+    document.getElementById('cdList').innerHTML = '<div class="empty">読み込み中…</div>';
+    cdDlg.showModal(); noAutoFocus(cdDlg);
+    google.script.run.withSuccessHandler(list => {
+      const total = list.reduce((a, i) => a + i.amount, 0);
+      document.getElementById('cdInfo').textContent = `${md(from)}〜${md(to)}の利用分・${list.length}件・合計 ${yen(total)}`;
+      document.getElementById('cdList').innerHTML = list.length ? list.map(i =>
+        `<div class="cd-row"><span class="d">${md(i.date)}</span><span class="n">${esc(i.store || '(店名なし)')}<div class="meta">${metaHtml(i)}</div></span><span class="a">${yen(i.amount)}</span></div>`).join('')
+        : '<div class="empty">この期間のカード払いはまだありません</div>';
+    }).withFailureHandler(e => { document.getElementById('cdList').innerHTML = `<div class="empty">読み込めませんでした：${esc(e.message)}</div>`; })
+      .getCardEntries(KEY, method, from, to);
   }
 
   // ===== 今月の入金・今月の収支 =====
@@ -1316,7 +1424,7 @@
     fillCats(kind, keep ? editing.category : kind === 'transfer' ? defaultTarget() : catsFor(kind).includes(filterCat) ? filterCat : catsFor(kind)[0]);
     // 支払方法（振替のときは振替元：口座やカード）
     const ms = (data.payMethods || []).filter(m => kind !== 'transfer' || m.type === 'instant' || m.type === 'card');
-    let msel = editing ? editing.method : kind === 'transfer' ? defaultMethodId('fixed') : defaultMethodId('manual');
+    let msel = editing ? editing.method : kind === 'transfer' ? defaultMethodId('fixed') : (filterMethod || defaultMethodId('manual'));
     if (!ms.some(m => m.id === msel)) msel = (ms[0] || {}).id;
     document.getElementById('fMethod').innerHTML = ms.map(m => `<option value="${esc(m.id)}"${m.id === msel ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
     kindUi(kind);
@@ -1353,8 +1461,22 @@
     const kw = normQ(searchQ());
     return baseItems().map((i, k) => ({ i, k }))
       .filter(x => !filterCat || x.i.category === filterCat)
+      .filter(x => !filterMethod || matchMethod(x.i, filterMethod))
       .filter(x => allMode() || !kw || [x.i.store, x.i.rawStore, x.i.aliasStore].some(t => normQ(t).includes(kw)));
   }
+  // 支払方法で絞り込む：支出はその支払方法で払ったもの、振替はその支払方法から出た／入ったもの（入金は対象外）
+  let filterMethod = '';
+  function matchMethod(i, m) {
+    if (i.kind === 'income') return false;
+    if (i.kind === 'transfer') return i.method === m || i.category === m;
+    return i.method === m;
+  }
+  function setMethodFilter(m) {
+    filterMethod = filterMethod === m ? '' : m;
+    render();
+    document.getElementById('list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function clearFilters() { filterCat = ''; filterMethod = ''; render(); }
   function setFilter(c) {
     filterCat = filterCat === c ? '' : c;
     render();
@@ -1367,6 +1489,7 @@
   function tapItem(k) {
     if (stale) return; // 更新中は古い内容を編集しないようにする
     const i = baseItems()[k];
+    if (i.kind === 'cardpay') { if (!selMode) openCardEntries(i.method, i.from, i.to, methodName(i.method), i.date); return; }
     if (!selMode) return openEdit(k);
     if (i.pending || i.kind === 'transfer') return;
     selected.has(i.id) ? selected.delete(i.id) : selected.add(i.id);
@@ -1386,7 +1509,7 @@
     render();
   }
   function selectAll() {
-    const rows = visibleItems().map(x => x.i).filter(i => !i.pending && i.kind !== 'transfer').map(i => i.id);
+    const rows = visibleItems().map(x => x.i).filter(i => !i.pending && i.kind !== 'transfer' && i.kind !== 'cardpay').map(i => i.id);
     const all = rows.every(r => selected.has(r));
     rows.forEach(r => all ? selected.delete(r) : selected.add(r));
     render(); updateSelBar();
@@ -1575,7 +1698,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = '64301ab89743';
+    const BUILD = '12df019b188e';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
