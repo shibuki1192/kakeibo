@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="e5eb7ce0d568">
+<meta name="build" content="a392a508093e">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1330,7 +1330,7 @@
     el.style.display = '';
     el.onclick = () => openBank('bank');
     if (!b) {
-      el.innerHTML = `<div class="label">ゆうちょ残高</div><div class="bank-empty">${mdw(data.period.start)}時点の<br>残高を入力 ›</div>`;
+      el.innerHTML = `<div class="label">ゆうちょ残高</div><div class="bank-empty">${mdw(data.period.start)}開始時点の<br>残高を入力 ›</div>`;
     } else if (b.state === 'now') {
       el.innerHTML = `<div class="label">ゆうちょ残高（今日）</div><div class="total${b.current < 0 ? ' neg' : ''}">${yenS(b.current)}</div>`
         + `<div class="bline"><span>引落予定</span><span>−${yen(b.planned)}</span></div>`
@@ -1348,7 +1348,7 @@
     el.style.display = '';
     el.onclick = () => openBank('cash');
     if (!c) {
-      el.innerHTML = `<div class="label">現金（手元）</div><div class="bank-empty">${mdw(data.period.start)}時点の<br>現金を入力 ›</div>`;
+      el.innerHTML = `<div class="label">現金（手元）</div><div class="bank-empty">${mdw(data.period.start)}開始時点の<br>現金を入力 ›</div>`;
       return;
     }
     const main = c.state === 'now' ? c.current : c.end;
@@ -1365,7 +1365,7 @@
     const b = which === 'cash' ? data.cash : data.bank;
     const what = which === 'cash' ? '手元の現金' : 'ゆうちょ銀行の残高';
     document.getElementById('bkTitle').textContent = `${cur.getFullYear()}年${cur.getMonth() + 1}月${data.custom ? '度' : ''}の開始${which === 'cash' ? '時の現金' : '残高'}`;
-    document.getElementById('bkInfo').textContent = `${mdw(data.period.start)}時点の${what}を入力してください。`
+    document.getElementById('bkInfo').textContent = `${mdw(data.period.start)}開始時点の${what}を入力してください。`
       + (b && b.source === 'carry' ? `今は前の月からの繰り越しで ${yenS(b.start)} になっています。` : '');
     document.getElementById('bkAmount').value = b && b.source === 'input' ? fmtNum(b.start) : '';
     document.getElementById('bkReset').style.display = b && b.source === 'input' ? '' : 'none';
@@ -1718,7 +1718,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = 'e5eb7ce0d568';
+    const BUILD = 'a392a508093e';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
