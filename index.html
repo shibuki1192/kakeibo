@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="a392a508093e">
+<meta name="build" content="785c8f52b076">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1062,7 +1062,7 @@
     const dueTxt = due.length ? '（' + due.map(x => Number(x.ym.slice(5, 7)) + unit + ' ' + yen(x.amount)).join('／') + '）' : '';
     document.getElementById('exclTotal').innerHTML =
       `<div>確定前：${sum(pend)} を含む</div><div>カード払い：${yen(dueTotal)} を含む${dueTxt}</div>`
-      + `<div>予算外：${sum(counted.concat(pend).filter(i => isOff(i.category)))} を含む</div><div>集計外：${sum(excl)} を除く</div>`;
+      + `<div>集計外：${sum(excl)} を除く</div>`;
 
     renderOutflow();
     renderIncome(inc);
@@ -1718,7 +1718,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = 'a392a508093e';
+    const BUILD = '785c8f52b076';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
