@@ -1,0 +1,101 @@
+# gas/ のファイルが main に入ったら、Apps Script に送って、今のウェブアプリを新しいバージョンで再デプロイする。
+# 必要な Secrets（Settings → Secrets and variables → Actions）:
+#   CLASPRC_JSON  : PC で `clasp login` したときにできる .clasprc.json の中身
+#   SCRIPT_ID     : Apps Script の「プロジェクトの設定」にあるスクリプト ID
+#   DEPLOYMENT_ID : 「デプロイを管理」にあるウェブアプリのデプロイ ID（AKfy… で始まるもの）
+name: Apps Script に反映
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gas/**'
+      - '.github/workflows/deploy-gas.yml'
+  workflow_dispatch:
+
+# 2つ同時に反映しないよう、順番に実行する
+concurrency:
+  group: deploy-gas
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+      DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+    steps:
+      - name: Secrets の確認
+        id: check
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ] || [ -z "$DEPLOYMENT_ID" ]; then
+            echo "::notice::Secrets（CLASPRC_JSON / SCRIPT_ID / DEPLOYMENT_ID）が未設定なので、Apps Script への反映はスキップします。"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: '20'
+
+      - name: clasp の準備
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          npm install -g @google/clasp@2.4.2
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: 今の設定ファイル（appsscript.json）を取得
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          mkdir -p build
+          cd build
+          printf '{"scriptId":"%s","rootDir":"."}' "$SCRIPT_ID" > .clasp.json
+          clasp pull
+          ls -la
+
+      - name: コードを差し替え
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          cd build
+          # appsscript.json だけ残して、ほかのファイルは gas/ の内容に入れ替える
+          find . -maxdepth 1 -type f \( -name '*.js' -o -name '*.gs' -o -name '*.html' \) -delete
+          cp ../gas/Code.gs Code.js
+          cp ../gas/Index.html Index.html
+          # ウェブアプリの設定（全員がアクセス可・自分として実行）が消えないようにする
+          python3 - <<'PY'
+          import json
+          p = 'appsscript.json'
+          m = json.load(open(p, encoding='utf-8'))
+          m.setdefault('timeZone', 'Asia/Tokyo')
+          m.setdefault('webapp', {'executeAs': 'USER_DEPLOYING', 'access': 'ANYONE_ANONYMOUS'})
+          json.dump(m, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          print(json.dumps(m, ensure_ascii=False, indent=2))
+          PY
+          ls -la
+
+      - name: Apps Script に送る
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          cd build
+          clasp push --force
+
+      - name: 新しいバージョンで再デプロイ（URL は変わらない）
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          cd build
+          clasp deploy --deploymentId "$DEPLOYMENT_ID" --description "GitHub ${GITHUB_SHA::7}"
+
+      - name: 認証ファイルを消す
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
