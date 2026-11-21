@@ -364,6 +364,9 @@ function fetchCardMails() {
   if (!lock.tryLock(30000)) return; // 画面で保存中なら、次の回に取り込む
   try { fetchCardMailsLocked_(); } finally { lock.releaseLock(); }
 }
+// 一度だけ、取り込む範囲を広げる（終わったら印を付けて、以後は直近30日だけ）
+const MAIL_BACKFILL_ = { key: 'backfill_2026-08', after: '2026/08/01' };
+
 function fetchCardMailsLocked_() {
   applyFixed_();
   const st = getSettings_();
@@ -373,34 +376,43 @@ function fetchCardMailsLocked_() {
   const subj = st.subjectWords.length
     ? '(' + st.subjectWords.map(s => `subject:${s}`).join(' OR ') + ')'
     : '';
-  const query = `(${from}) ${subj} newer_than:30d -label:${CONFIG.DONE_LABEL}`;
-
-  const threads = GmailApp.search(query, 0, 50);
-  if (!threads.length) return;
+  const backfill = !props_()[MAIL_BACKFILL_.key];
+  const range = backfill ? `after:${MAIL_BACKFILL_.after}` : 'newer_than:30d';
+  const query = `(${from}) ${subj} ${range} -label:${CONFIG.DONE_LABEL}`;
 
   const sh = getSheet_();
   const known = new Set(sh.getRange(2, 6, Math.max(sh.getLastRow() - 1, 1), 1).getValues().flat());
-  const label = GmailApp.getUserLabelByName(CONFIG.DONE_LABEL);
+  const label = GmailApp.getUserLabelByName(CONFIG.DONE_LABEL) || GmailApp.createLabel(CONFIG.DONE_LABEL);
+  const started = Date.now();
 
-  threads.forEach(th => {
-    th.getMessages().forEach(msg => {
-      const id = msg.getId();
-      if (known.has(id)) return;
-      const r = parseMail_(msg);
-      if (r) {
-        const method = methodForSender_(msg.getFrom(), st.payMethods);
-        const tr = transferTarget_(r.store, st);
-        if (tr) { // au Pay へのチャージなど：支出ではなく振替として記録
-          sh.appendRow([r.date, r.amount, r.store, tr, '', id, true, '', method, TRANSFER]);
-        } else {
-          const counted = !st.excludeStores.some(w => norm_(r.store).includes(norm_(w)));
-          sh.appendRow([r.date, r.amount, r.store, guessCategory_(r.store, st.storeRules), '', id, counted, '', method]);
+  // 取り込んだ会話には「家計簿済」が付いて次の検索に出なくなるので、50件ずつ繰り返す
+  // 範囲を広げたときは件数が多いので、最大10回（時間がかかりすぎたら次の回に続きを取り込む）
+  let finished = false;
+  for (let round = 0; round < (backfill ? 10 : 1); round++) {
+    const threads = GmailApp.search(query, 0, 50);
+    threads.forEach(th => {
+      th.getMessages().forEach(msg => {
+        const id = msg.getId();
+        if (known.has(id)) return;
+        const r = parseMail_(msg);
+        if (r) {
+          const method = methodForSender_(msg.getFrom(), st.payMethods);
+          const tr = transferTarget_(r.store, st);
+          if (tr) { // au Pay へのチャージなど：支出ではなく振替として記録
+            sh.appendRow([r.date, r.amount, r.store, tr, '', id, true, '', method, TRANSFER]);
+          } else {
+            const counted = !st.excludeStores.some(w => norm_(r.store).includes(norm_(w)));
+            sh.appendRow([r.date, r.amount, r.store, guessCategory_(r.store, st.storeRules), '', id, counted, '', method]);
+          }
+          known.add(id);
         }
-        known.add(id);
-      }
+      });
+      th.addLabel(label);
     });
-    th.addLabel(label);
-  });
+    if (threads.length < 50) { finished = true; break; }
+    if (Date.now() - started > 4 * 60 * 1000) break; // Apps Script の時間制限（6分）の前にやめる
+  }
+  if (backfill && finished) setProps_({ [MAIL_BACKFILL_.key]: new Date().toISOString() });
 }
 
 // ===== メール本文の解析 =====
