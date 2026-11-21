@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="build" content="f5d58c024ffa">
+<meta name="build" content="e5eb7ce0d568">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1408,7 +1408,7 @@
   function fillCats(kind, sel) {
     if (kind === 'transfer') {
       document.getElementById('fCat').innerHTML = transferTargets().map(m =>
-        `<option value="${esc(m.id)}"${m.id === sel ? ' selected' : ''}>${esc(m.name)}${m.type === 'cash' ? '（ATMで引き出し）' : '（チャージ）'}</option>`).join('');
+        `<option value="${esc(m.id)}"${m.id === sel ? ' selected' : ''}>${esc(m.name)}${m.type === 'cash' ? '' : '（チャージ）'}</option>`).join('');
       return;
     }
     const list = catsFor(kind).slice();
@@ -1441,7 +1441,7 @@
     const keep = editing && editing.kind === kind; // 編集中で区分が同じなら今の値のまま
     fillCats(kind, keep ? editing.category : kind === 'transfer' ? defaultTarget() : catsFor(kind).includes(filterCat) ? filterCat : catsFor(kind)[0]);
     // 支払方法（振替のときは振替元：口座やカード）
-    const ms = (data.payMethods || []).filter(m => kind !== 'transfer' || m.type === 'instant' || m.type === 'card');
+    const ms = data.payMethods || []; // 振替元もすべての支払方法から選べる（例：au Pay → Suica）
     let msel = editing ? editing.method : kind === 'transfer' ? defaultMethodId('fixed') : (filterMethod || defaultMethodId('manual'));
     if (!ms.some(m => m.id === msel)) msel = (ms[0] || {}).id;
     document.getElementById('fMethod').innerHTML = ms.map(m => `<option value="${esc(m.id)}"${m.id === msel ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
@@ -1622,10 +1622,12 @@
       const amount = parseMoney(document.getElementById('fAmount').value);
       if (!amount) return;
       const toM = (data.payMethods || []).find(m => m.id === cat) || {};
+      const fromM = (data.payMethods || []).find(m => m.id === document.getElementById('fMethod').value) || {};
+      if (addKind === 'transfer' && fromM.id === toM.id) { alert('振替元と振替先が同じです'); return; }
       const entry = addKind === 'transfer'
         ? { kind: 'transfer', date: document.getElementById('fDate').value, amount, to: cat, memo,
             method: document.getElementById('fMethod').value,
-            store: toM.type === 'cash' ? 'ATMで引き出し' : (toM.name || '') + 'へチャージ' }
+            store: toM.type === 'cash' ? (fromM.type === 'instant' ? 'ATMで引き出し' : (fromM.name || '') + 'から現金へ') : (toM.name || '') + 'へチャージ' }
         : { date: document.getElementById('fDate').value, amount,
             store: document.getElementById('fStore').value, category: cat, memo, excluded,
             method: document.getElementById('fMethod').value, kind: addKind };
@@ -1716,7 +1718,7 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
     // 画面は保存した版をすぐ出しているので、出したあとで新しい版がないか確認する
-    const BUILD = 'f5d58c024ffa';
+    const BUILD = 'e5eb7ce0d568';
     const checkUpdate = async () => {
       if (!navigator.serviceWorker.controller) return;
       try {
