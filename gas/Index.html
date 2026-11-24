@@ -245,7 +245,10 @@
   </div>
 
   <!-- 今月の収支 → 入金：出金 → 口座：現金 → 支出 -->
-  <div class="card" id="balanceCard" style="display:none"></div>
+  <div class="pair">
+    <div class="card" id="balanceSpendCard" style="display:none"></div>
+    <div class="card" id="balanceCard" style="display:none"></div>
+  </div>
   <div class="pair">
     <div class="card" id="incomeCard" style="display:none"></div>
     <div class="card" id="outflow" style="display:none"></div>
@@ -1251,6 +1254,16 @@
     bc.innerHTML = `<div class="label">今月の収支（入金 − 出金）</div>`
       + `<div class="total ${bal >= 0 ? 'pos' : 'neg'}">${signed(bal)}</div>`
       + `<div class="label" style="margin-top:4px">確定済のみ：${signed(balConf)}</div>`;
+    // 入金 − 支出（使った金額で見た収支。支払日は関係なく、予算外も含み、集計外は除く）
+    const exp = data.items.filter(i => i.kind === 'expense' && !i.excluded);
+    const spAll = exp.reduce((a, i) => a + i.amount, 0);
+    const spConf = exp.filter(i => !i.pending).reduce((a, i) => a + i.amount, 0);
+    const sc = document.getElementById('balanceSpendCard');
+    sc.style.display = '';
+    const bs = conf + pend - spAll, bsConf = conf - spConf;
+    sc.innerHTML = `<div class="label">今月の収支（入金 − 支出）</div>`
+      + `<div class="total ${bs >= 0 ? 'pos' : 'neg'}">${signed(bs)}</div>`
+      + `<div class="label" style="margin-top:4px">確定済のみ：${signed(bsConf)}</div>`;
     renderBank();
   }
 
