@@ -997,7 +997,7 @@
     const unit = data.custom ? '月度' : '月';
     const dueTxt = due.length ? '（' + due.map(x => Number(x.ym.slice(5, 7)) + unit + ' ' + yen(x.amount)).join('／') + '）' : '';
     document.getElementById('exclTotal').innerHTML =
-      `<div>確定前：${sum(pend)} を含む</div><div>カード払い：${yen(dueTotal)} を含む${dueTxt}</div>`
+      `<div>明日以降の予定：${sum(counted.concat(pend).filter(isFuture))} を含む</div><div>カード払い：${yen(dueTotal)} を含む${dueTxt}</div>`
       + `<div>集計外：${sum(excl)} を除く</div>`;
 
     renderOutflow();
@@ -1180,10 +1180,10 @@
     const o = data.outflow, el = document.getElementById('outflow');
     if (!o) { el.style.display = 'none'; return; }
     el.style.display = '';
-    // 今月の支出と同じ形：合計（確定前を含む）＋確定前
+    // 今月の支出と同じ形：合計（予定を含む）＋明日以降の予定
     el.innerHTML = `<div class="label">今月の出金</div>`
       + `<div class="total">${yen(o.total + (o.pending || 0))}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(o.pending || 0)} を含む</div>`
+      + `<div class="label" style="margin-top:4px">明日以降の予定：${yen(o.future != null ? o.future : (o.pending || 0))} を含む</div>`
       + `<div class="label of-toggle">${outflowOpen ? '▲ 内訳を閉じる' : '▼ タップで内訳'}</div>`;
     el.onclick = () => { outflowOpen = !outflowOpen; cacheSet('outflowOpen', outflowOpen); renderOutflow(); };
     // 内訳（下に全幅で表示）
@@ -1246,24 +1246,26 @@
     const pend = inc.filter(i => i.pending).reduce((a, i) => a + i.amount, 0);
     const ic = document.getElementById('incomeCard'), bc = document.getElementById('balanceCard');
     ic.style.display = ''; bc.style.display = '';
+    const incFut = inc.filter(i => !i.excluded && isFuture(i)).reduce((a, i) => a + i.amount, 0);
     ic.innerHTML = `<div class="label">今月の入金</div><div class="total">${yen(conf + pend)}</div>`
-      + `<div class="label" style="margin-top:4px">確定前：${yen(pend)} を含む</div>`;
+      + `<div class="label" style="margin-top:4px">明日以降の予定：${yen(incFut)} を含む</div>`;
     const o = data.outflow || { total: 0, pending: 0 };
-    const bal = conf + pend - (o.total + (o.pending || 0));   // 確定前を含む見込み
-    const balConf = conf - o.total;                            // 確定済みだけ
+    const outAll = o.total + (o.pending || 0);
+    const bal = conf + pend - outAll;                                              // 予定を含む見込み
+    const balConf = (conf + pend - incFut) - (o.done != null ? o.done : o.total);  // 今日までの分だけ
     bc.innerHTML = `<div class="label">今月の収支（入金 − 出金）</div>`
       + `<div class="total ${bal >= 0 ? 'pos' : 'neg'}">${signed(bal)}</div>`
-      + `<div class="label" style="margin-top:4px">確定済のみ：${signed(balConf)}</div>`;
+      + `<div class="label" style="margin-top:4px">今日まで：${signed(balConf)}</div>`;
     // 入金 − 支出（使った金額で見た収支。支払日は関係なく、予算外も含み、集計外は除く）
     const exp = data.items.filter(i => i.kind === 'expense' && !i.excluded);
     const spAll = exp.reduce((a, i) => a + i.amount, 0);
-    const spConf = exp.filter(i => !i.pending).reduce((a, i) => a + i.amount, 0);
+    const spConf = exp.filter(i => !isFuture(i)).reduce((a, i) => a + i.amount, 0);
     const sc = document.getElementById('balanceSpendCard');
     sc.style.display = '';
-    const bs = conf + pend - spAll, bsConf = conf - spConf;
+    const bs = conf + pend - spAll, bsConf = (conf + pend - incFut) - spConf;
     sc.innerHTML = `<div class="label">今月の収支（入金 − 支出）</div>`
       + `<div class="total ${bs >= 0 ? 'pos' : 'neg'}">${signed(bs)}</div>`
-      + `<div class="label" style="margin-top:4px">確定済のみ：${signed(bsConf)}</div>`;
+      + `<div class="label" style="margin-top:4px">今日まで：${signed(bsConf)}</div>`;
     renderBank();
   }
 
@@ -1414,6 +1416,9 @@
       searchData = r; searchBusy = false; render();
     }).withFailureHandler(() => { searchBusy = false; render(); }).searchEntries(KEY, q);
   }
+
+  // まだ起きていない明細か（確定前の固定費、または明日以降の日付）
+  const isFuture = i => !!i.pending || i.date > todayStr();
 
   // 予算外のカテゴリか
   const isOff = c => (data.offBudget || []).includes(c);

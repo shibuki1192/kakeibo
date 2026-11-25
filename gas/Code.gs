@@ -674,6 +674,9 @@ function getMonth(key, ym) {
   const pendBankOut = sumPend(it => it.kind === 'expense' && methodType_(it.method, st.payMethods) === 'instant');
   const pendCash = sumPend(it => it.kind === 'expense' && methodType_(it.method, st.payMethods) === 'cash');
   const oToday = now ? computeOutflow_(rows, P, st.payMethods, today) : outflow;
+  // 今日までに出た額と、これから出る予定の額（明日以降の明細・カード引き落とし・確定前の固定費）
+  outflow.done = state === 'future' ? 0 : oToday.total;
+  outflow.future = outflow.total + (outflow.pending || 0) - outflow.done;
   let bank = null, cash = null;
   const sb = startBalance_(ym, rows, st, 'bank');
   if (sb) {
