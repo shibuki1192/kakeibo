@@ -345,6 +345,16 @@ function applyFixed_() {
   setProps_({ fixedApplied: stamp });
 }
 
+// 削除したメールの明細は、再び取り込まない
+function getSkippedMail_() {
+  const v = props_().skippedMail;
+  return v ? JSON.parse(v) : [];
+}
+function addSkippedMail_(id) {
+  const list = getSkippedMail_().filter(x => x !== id).concat([id]).slice(-300);
+  setProps_({ skippedMail: JSON.stringify(list) });
+}
+
 // 削除した固定費の記録は、再び自動追加しない
 let skippedMemo_ = null;
 function getSkipped_() {
@@ -353,7 +363,7 @@ function getSkipped_() {
   return skippedMemo_ = v ? JSON.parse(v) : [];
 }
 function addSkipped_(id) {
-  const list = getSkipped_().concat([id]).slice(-500);
+  const list = getSkipped_().concat([id]).slice(-300); // 保存できる大きさ（9KB）に収める
   setProps_({ skippedFixed: JSON.stringify(list) });
   skippedMemo_ = list;
 }
@@ -381,7 +391,11 @@ function fetchCardMailsLocked_() {
   const query = `(${from}) ${subj} ${range} -label:${CONFIG.DONE_LABEL}`;
 
   const sh = getSheet_();
-  const known = new Set(sh.getRange(2, 6, Math.max(sh.getLastRow() - 1, 1), 1).getValues().flat());
+  // 記録済みのメール（分割・重複で付いた「#…」は除いて比べる）と、削除したメール
+  const known = new Set(sh.getRange(2, 6, Math.max(sh.getLastRow() - 1, 1), 1).getValues().flat().map(x => String(x).split('#')[0]));
+  getSkippedMail_().forEach(x => known.add(x));
+  // 同じ会話の中の古いメールは読まない（検索の範囲より前のもの）
+  const oldest = backfill ? new Date(MAIL_BACKFILL_.after.replace(/\//g, '-') + 'T00:00:00') : new Date(Date.now() - 35 * 864e5);
   const label = GmailApp.getUserLabelByName(CONFIG.DONE_LABEL) || GmailApp.createLabel(CONFIG.DONE_LABEL);
   const started = Date.now();
 
@@ -393,7 +407,7 @@ function fetchCardMailsLocked_() {
     threads.forEach(th => {
       th.getMessages().forEach(msg => {
         const id = msg.getId();
-        if (known.has(id)) return;
+        if (known.has(id) || msg.getDate() < oldest) return;
         const r = parseMail_(msg);
         if (r) {
           const method = methodForSender_(msg.getFrom(), st.payMethods);
@@ -1097,6 +1111,14 @@ function deleteEntry(key, entryId) {
   const row = rowOfId_(sh, entryId);
   const id = String(sh.getRange(row, 6).getValue());
   if (id.startsWith('fixed:')) addSkipped_(id);
+  // メールから取り込んだ明細は、そのメールを「取り込まない」一覧に入れる
+  // （同じ会話に新しいメールが届くと、会話の中の古いメールももう一度読まれるため）
+  else if (sourceOf_(id) === 'mail') {
+    const base = id.split('#')[0];
+    const rest = sh.getRange(2, 6, sh.getLastRow() - 1, 1).getValues().flat().map(String)
+      .filter((x, i) => i + 2 !== row && x.split('#')[0] === base);
+    if (!rest.length) addSkippedMail_(base); // 分割した残りがあるときは、まだ記録が残っているので不要
+  }
   sh.deleteRow(row);
 }
 
